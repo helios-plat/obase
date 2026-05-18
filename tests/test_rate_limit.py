@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import time
-from pathlib import Path
 
 import pytest
 import yaml
 
 from obase.exceptions import OBaseError, RateLimitExceeded
-from obase.rate_limit import RateLimitRegistry, RateLimiter
+from obase.rate_limit import RateLimiter, RateLimitRegistry
 
 
 class TestRateLimiter:

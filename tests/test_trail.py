@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
-import pytest
-
-from obase.fs import FS
 from obase.trail import Trail, load_trail, query_trail
 
 
@@ -97,7 +93,7 @@ class TestQueryTrail:
         trail = Trail("time-run")
         trail.emit("early", val=0)
         time.sleep(0.05)
-        cutoff = datetime.now(timezone.utc)
+        cutoff = datetime.now(UTC)
         time.sleep(0.05)
         trail.emit("late", val=1)
 

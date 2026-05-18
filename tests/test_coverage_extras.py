@@ -1,9 +1,8 @@
 """Extra tests targeting uncovered lines to push coverage above 95%."""
 from __future__ import annotations
 
-import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,7 +45,6 @@ class TestFSErrorPaths:
         FS.working_dir()
         old_dir = tmp_path / "work" / "old-run"
         old_dir.mkdir()
-        import os
         os.utime(old_dir, (0, 0))
         with patch("shutil.rmtree", side_effect=OSError("locked")):
             removed = FS.cleanup_old_runs(max_age_seconds=1)
@@ -88,12 +86,13 @@ class TestTrailCoveragePaths:
     def test_query_trail_before_filter(self, tmp_path):
         """query_trail before= filter works correctly."""
         import time
+
         from obase.trail import Trail, query_trail
         FS.set_default_working_dir(tmp_path / "work")
         trail = Trail("before-run")
         trail.emit("early", seq=1)
         time.sleep(0.05)
-        cutoff = datetime.now(timezone.utc)
+        cutoff = datetime.now(UTC)
         time.sleep(0.05)
         trail.emit("late", seq=2)
 
@@ -110,7 +109,7 @@ class TestTrailCoveragePaths:
         # Inject a bad-ts record directly
         with trail.path.open("a") as fh:
             fh.write('{"ts": "not-a-date", "event": "bad", "val": 999}\n')
-        cutoff = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        cutoff = datetime(2000, 1, 1, tzinfo=UTC)
         results = query_trail(working_dir=tmp_path / "work", after=cutoff)
         vals = [r.get("val") for r in results]
         assert 999 not in vals

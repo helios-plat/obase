@@ -1,15 +1,12 @@
-from __future__ import annotations
-
 """End-to-end integration tests wiring orchestrator + trail + cost + cache + rate_limit."""
 
-import asyncio
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
 from obase.cache import Cache
 from obase.cost_tracker import CostTracker, PricingEntry, PricingTable
-from obase.exceptions import BudgetExceeded, PauseRequested
+from obase.exceptions import PauseRequested
 from obase.orchestrator import OrchestratorContext, Pipeline, Stage, run_pipeline
 from obase.rate_limit import RateLimitRegistry
 from obase.trail import Trail, load_trail

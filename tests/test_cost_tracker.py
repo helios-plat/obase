@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
 import yaml
 
@@ -17,7 +14,8 @@ def _make_table(*entries: dict) -> PricingTable:
 class TestPricingTable:
     def test_lookup_found(self):
         table = _make_table(
-            {"category": "llm", "provider": "openai", "model_or_tier": "gpt-4", "unit": "token", "price_usd": 0.00003}
+            {"category": "llm", "provider": "openai", "model_or_tier": "gpt-4",
+             "unit": "token", "price_usd": 0.00003}
         )
         entry = table.lookup("llm", "openai", "gpt-4", "token")
         assert entry is not None
@@ -25,13 +23,15 @@ class TestPricingTable:
 
     def test_lookup_not_found(self):
         table = _make_table(
-            {"category": "llm", "provider": "openai", "model_or_tier": "gpt-4", "unit": "token", "price_usd": 0.00003}
+            {"category": "llm", "provider": "openai", "model_or_tier": "gpt-4",
+             "unit": "token", "price_usd": 0.00003}
         )
         assert table.lookup("llm", "openai", "gpt-3.5", "token") is None
 
     def test_from_yaml(self, tmp_path):
         data = [
-            {"category": "tts", "provider": "azure", "model_or_tier": "neural", "unit": "char", "price_usd": 0.00001}
+            {"category": "tts", "provider": "azure", "model_or_tier": "neural",
+             "unit": "char", "price_usd": 0.00001}
         ]
         p = tmp_path / "pricing.yaml"
         p.write_text(yaml.dump(data))
@@ -44,9 +44,12 @@ class TestPricingTable:
 class TestCostTracker:
     def _tracker(self, budget=None, strict=True, trail=None) -> CostTracker:
         table = _make_table(
-            {"category": "llm", "provider": "mock", "model_or_tier": "v1", "unit": "token", "price_usd": 0.001}
+            {"category": "llm", "provider": "mock", "model_or_tier": "v1",
+             "unit": "token", "price_usd": 0.001}
         )
-        return CostTracker(pricing_table=table, budget_usd=budget, strict_pricing=strict, trail=trail)
+        return CostTracker(
+            pricing_table=table, budget_usd=budget, strict_pricing=strict, trail=trail
+        )
 
     def test_record_returns_cost(self):
         ct = self._tracker()

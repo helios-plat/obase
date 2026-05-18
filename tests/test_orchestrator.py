@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from obase.exceptions import BudgetExceeded, PauseRequested, StageContractViolation
-from obase.orchestrator import OrchestratorContext, Pipeline, Stage, RunState, run_pipeline
+from obase.orchestrator import OrchestratorContext, Pipeline, Stage, run_pipeline
 
 
 async def _echo(data: dict, ctx: OrchestratorContext) -> dict:
@@ -178,7 +178,6 @@ class TestRetryAndFailure:
         assert state.data["from_s2"] == 2
 
     async def test_trail_injected(self):
-        from obase.trail import Trail
 
         events: list[str] = []
 
@@ -196,6 +195,6 @@ class TestRetryAndFailure:
                 events.append("finalize")
 
         pipeline = Pipeline("p", [Stage("s", _echo)])
-        state = await run_pipeline(pipeline, initial_data={"a": 1}, trail=MockTrail())
+        await run_pipeline(pipeline, initial_data={"a": 1}, trail=MockTrail())
         assert "pipeline_start" in events
         assert "finalize" in events

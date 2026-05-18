@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """PB-specific tests: verify no silent fallbacks anywhere in obase."""
+
+from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -43,7 +43,8 @@ class TestNoSilentFallback:
         """BudgetExceeded is raised by record(), not silently skipped."""
         from obase.cost_tracker import PricingEntry
         table = PricingTable(
-            entries=[PricingEntry(category="a", provider="b", model_or_tier="c", unit="u", price_usd=1.0)]
+            entries=[PricingEntry(category="a", provider="b", model_or_tier="c",
+                                  unit="u", price_usd=1.0)]
         )
         ct = CostTracker(pricing_table=table, budget_usd=0.5, strict_pricing=True)
         with pytest.raises(BudgetExceeded):
