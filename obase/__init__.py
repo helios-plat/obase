@@ -1,9 +1,8 @@
-"""obase — Stratum core utilities + Helios infrastructure library.
+"""obase — Stratum core utilities + legacy infrastructure library.
 
-Stratum-native modules (errors, logging, config, cost_tracker_stratum,
-bootstrap_stratum) are always importable without optional dependencies.
-Legacy Helios modules (structlog/pydantic-based) are loaded only when
-their dependencies are present.
+Core modules (errors, logging, config, cost_tracker) are always importable
+without optional dependencies. Legacy modules (structlog/pydantic-based)
+are loaded only when their dependencies are present.
 """
 from __future__ import annotations
 

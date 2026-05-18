@@ -1,6 +1,6 @@
 """Tests for Stratum-native obase modules.
 
-Covers: errors, logging, config, cost_tracker_stratum, bootstrap_stratum.
+Covers: errors, logging, config, cost_tracker (module-level functions).
 """
 from __future__ import annotations
 
@@ -124,13 +124,17 @@ class TestConfig:
         assert cfg.get("SOME_DIRECT_ENV") == "direct_value"
 
 
-class TestCostTrackerStratum:
+class TestCostTracker:
     def setup_method(self):
-        from obase.cost_tracker_stratum import reset
+        from obase.cost_tracker import reset
+        reset()
+
+    def teardown_method(self):
+        from obase.cost_tracker import reset
         reset()
 
     def test_track_accumulates(self):
-        from obase.cost_tracker_stratum import get_records, total_cost, track
+        from obase.cost_tracker import get_records, total_cost, track
         track("dashscope", "text-embedding-v3", 1000, 0, 0.001)
         track("claude", "claude-sonnet-4-6", 500, 200, 0.005)
         records = get_records()
@@ -138,20 +142,20 @@ class TestCostTrackerStratum:
         assert abs(total_cost() - 0.006) < 1e-9
 
     def test_total_cost_sums_correctly(self):
-        from obase.cost_tracker_stratum import total_cost, track
+        from obase.cost_tracker import total_cost, track
         track("p", "m", 100, 50, 0.01)
         track("p", "m", 200, 100, 0.02)
         assert abs(total_cost() - 0.03) < 1e-9
 
     def test_reset_clears_records(self):
-        from obase.cost_tracker_stratum import get_records, reset, total_cost, track
+        from obase.cost_tracker import get_records, reset, total_cost, track
         track("p", "m", 100, 0, 0.01)
         reset()
         assert get_records() == []
         assert total_cost() == 0.0
 
     def test_record_fields(self):
-        from obase.cost_tracker_stratum import get_records, track
+        from obase.cost_tracker import get_records, track
         track("provider_x", "model_y", 300, 150, 0.007)
         rec = get_records()[0]
         assert rec.provider == "provider_x"
@@ -161,28 +165,12 @@ class TestCostTrackerStratum:
         assert abs(rec.cost_usd - 0.007) < 1e-9
 
     def test_zero_cost_record(self):
-        from obase.cost_tracker_stratum import total_cost, track
+        from obase.cost_tracker import total_cost, track
         track("p", "m", 0, 0, 0.0)
         assert total_cost() == 0.0
 
-
-class TestBootstrapStratum:
-    def test_bootstrap_runs_without_error(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-        from obase.bootstrap_stratum import bootstrap
-        bootstrap(log_level="WARNING")
-        expected_dirs = [
-            "inbox", "data/substrate", "_archive", "index/lance", "index/tantivy"
-        ]
-        stratum_dir = tmp_path / ".stratum"
-        for d in expected_dirs:
-            assert (stratum_dir / d).is_dir(), f"Missing directory: {d}"
-
-    def test_bootstrap_with_custom_config(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-        config_file = tmp_path / "myconfig.yaml"
-        config_file.write_text("STRATUM_CUSTOM: myvalue\n")
-        from obase.bootstrap_stratum import bootstrap
-        bootstrap(config_path=config_file, log_level="WARNING")
-        from obase import config as cfg
-        assert cfg.get("STRATUM_CUSTOM") == "myvalue"
+    def test_cost_record_dataclass(self):
+        from obase.cost_tracker import CostRecord
+        rec = CostRecord(provider="p", model="m", input_tokens=10, output_tokens=5, cost_usd=0.001)
+        assert rec.provider == "p"
+        assert rec.cost_usd == 0.001
