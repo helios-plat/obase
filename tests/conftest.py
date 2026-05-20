@@ -7,6 +7,7 @@ import pytest
 from obase.fs import FS
 from obase.provider_registry import ProviderRegistry
 from obase.rate_limit import RateLimitRegistry
+from obase.tool_registry import ToolRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +23,8 @@ def clean_registries():
     """Reset class-level registries between tests."""
     ProviderRegistry.clear()
     RateLimitRegistry.clear()
+    ToolRegistry.clear()
     yield
     ProviderRegistry.clear()
     RateLimitRegistry.clear()
+    ToolRegistry.clear()

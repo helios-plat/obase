@@ -23,6 +23,7 @@ from obase.fs import FS
 from obase.orchestrator import Pipeline, RunState, Stage, run_pipeline
 from obase.provider_registry import ProviderRegistry
 from obase.rate_limit import RateLimiter, RateLimitRegistry
+from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.trail import Trail, load_trail, query_trail
 
 __all__ = [
@@ -53,6 +54,10 @@ __all__ = [
     "ProviderRegistry",
     "RateLimitRegistry",
     "RateLimiter",
+    "ToolMeta",
+    "ToolRegistry",
+    "ToolRegistryConflict",
+    "register_tool",
     "Trail",
     "load_trail",
     "query_trail",
