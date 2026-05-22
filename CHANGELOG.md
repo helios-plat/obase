@@ -4,6 +4,20 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Added
+- `obase.tool_registry` submodule: LLM-discoverable tool registration.
+  - `ToolRegistry` class-level singleton (mirrors `ProviderRegistry` style)
+  - `@register_tool` decorator with `permission` / `stability` / `requires_secrets`
+  - `to_openai_tool()` / `to_anthropic_tool()` schema generators in `obase.tool_registry.schema`
+  - `ToolMeta` dataclass: `name`, `fn`, `permission`, `stability`, `description`, `requires_secrets`
+  - Forbidden types in tool params: `Path`, `datetime`, `bytes`, `tuple` (LLM-hostile, raise RuntimeError)
+  - Google-style docstring `Args:` section parsed into `Field` descriptions automatically
+  - Contributed by Aegis project as part of v0.5 architecture (跨项目 LLM agent 基础设施)
+
+---
+
 ## v0.1.0 - 2026-05-18
 
 **obase 第一个稳定版本**(干净版,移除 v0.1 实施期间临时引入的 Stratum-native 污染)。
