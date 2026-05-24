@@ -45,6 +45,11 @@ class ProviderRegistry:
         return cls._providers[key]
 
     @classmethod
+    def get_caller(cls, provider: str, model: str) -> Callable[..., Any]:
+        """Convenience method to get an LLM caller."""
+        return cls.get("llm", provider)
+
+    @classmethod
     def has(cls, category: str, name: str) -> bool:
         return (category, name) in cls._providers
 

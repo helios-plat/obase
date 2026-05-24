@@ -8,6 +8,24 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## v0.3.0 - 2026-05-24
+
+**Hevi Batch 1 — obase v0.3.0**
+
+### Added
+- `obase.ffmpeg` submodule: Unified FFmpeg subprocess wrapper.
+  - `run(args, timeout_s, cwd, expected_output)` — async FFmpeg execution with timeout, stderr capture, and output validation.
+  - `FFmpegError` — raised on non-zero exit, timeout, or missing expected output.
+  - `FFmpegNotFoundError` — raised when ffmpeg binary is not on PATH.
+  - Example: `stderr = await run(args=["-i", "in.mp4", "-c", "copy", "out.mp4"])`
+- `obase.versionstore` submodule: JSONL append-only version store.
+  - `jsonl_append(path, entry, create_parents)` — append a dict as one JSON line.
+  - `jsonl_read(path, skip_malformed)` — read all entries from JSONL file.
+  - `jsonl_latest(path, by_key)` — get latest entry by key (last-entry-wins).
+  - Example: `await jsonl_append(path=Path("log.jsonl"), entry={"id": "a", "v": 1})`
+
+---
+
 ## v0.2.0 - 2026-05-24
 
 **BATCH 19 — obase v0.2.0**
