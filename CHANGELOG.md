@@ -6,6 +6,15 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — P6-B1 — Template Module
+
+- `obase.template` — YAML prompt template loading, validation, and rendering.
+  - `load(path)` — Load a Template from YAML file.
+  - `validate(template)` — Re-validate a Template instance.
+  - `render_prompt(template, vars)` — Substitute `{placeholder}` variables in system_prompt.
+  - `Template` — Pydantic model with name (no whitespace), version (semver), system_prompt, metadata.
+  - `TemplateError` / `TemplateValidationError` — Error hierarchy.
+
 ---
 
 ## [0.3.0] - 2026-05-24
