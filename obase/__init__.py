@@ -1,7 +1,7 @@
 """obase — Helios 生态横切基础设施库 (OBASE_SPEC v0.2)."""
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -28,6 +28,9 @@ from obase.rate_limit import RateLimiter, RateLimitRegistry
 from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
+
+# Sprint 11 — Notification Compliance (D2)
+from obase.notification import NotificationComplianceFilter
 
 __all__ = [
     "__version__",
@@ -67,4 +70,5 @@ __all__ = [
     "Trail",
     "load_trail",
     "query_trail",
+    "NotificationComplianceFilter",
 ]

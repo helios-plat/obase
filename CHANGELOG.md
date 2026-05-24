@@ -8,6 +8,18 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.3.0] - 2026-05-24
+
+### Added — Sprint 11 — Notification Compliance Filter (D2)
+
+- `obase.notification.NotificationComplianceFilter` — Quiet hours, disclaimer injection, blocked keywords.
+  - `register_quiet_hours(start_time, end_time, timezone, scope)` — Block non-critical during quiet hours.
+  - `register_disclaimer_template(channel, template)` — Inject disclaimer into message content.
+  - `register_blocked_keywords(keywords)` — Block messages containing keywords.
+  - `filter(message)` — Apply all rules; returns None if blocked.
+
+---
+
 ## v0.3.0 - 2026-05-24
 
 **Hevi Batch 1 — obase v0.3.0**
