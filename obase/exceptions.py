@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 
 class OBaseError(Exception):
     retryable: bool = False
@@ -12,9 +14,9 @@ class StageContractViolation(OBaseError):
 class PauseRequested(OBaseError):
     retryable = False
 
-    def __init__(self, reason: str = "", resume_data: dict | None = None) -> None:
+    def __init__(self, reason: str = "", resume_data: dict[str, Any] | None = None) -> None:
         super().__init__(reason)
-        self.resume_data: dict = resume_data or {}
+        self.resume_data: dict[str, Any] = resume_data or {}
 
 
 class BudgetExceeded(OBaseError):
@@ -62,4 +64,12 @@ class ProviderDiscoveryError(OBaseError):
 
 
 class FSError(OBaseError):
+    retryable = False
+
+
+class ObaseAuthError(OBaseError):
+    retryable = False
+
+
+class ObaseSecretsError(OBaseError):
     retryable = False

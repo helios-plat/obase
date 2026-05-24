@@ -80,12 +80,12 @@ class Cache:
         return removed
 
 
-def cached(cache: Cache, key_fn: Callable[..., str] | None = None) -> Callable:
+def cached(cache: Cache, key_fn: Callable[..., str] | None = None) -> Callable[..., Any]:
     """Decorator that wraps an async function with cache get/put logic.
     CacheError from put propagates to callers — no silent fallback.
     """
 
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             if key_fn is not None:

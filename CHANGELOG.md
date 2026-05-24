@@ -6,15 +6,22 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+---
+
+## v0.2.0 - 2026-05-24
+
+**BATCH 19 — obase v0.2.0**
+
 ### Added
-- `obase.tool_registry` submodule: LLM-discoverable tool registration.
-  - `ToolRegistry` class-level singleton (mirrors `ProviderRegistry` style)
-  - `@register_tool` decorator with `permission` / `stability` / `requires_secrets`
-  - `to_openai_tool()` / `to_anthropic_tool()` schema generators in `obase.tool_registry.schema`
-  - `ToolMeta` dataclass: `name`, `fn`, `permission`, `stability`, `description`, `requires_secrets`
-  - Forbidden types in tool params: `Path`, `datetime`, `bytes`, `tuple` (LLM-hostile, raise RuntimeError)
-  - Google-style docstring `Args:` section parsed into `Field` descriptions automatically
-  - Contributed by Aegis project as part of v0.5 architecture (跨项目 LLM agent 基础设施)
+- `obase.uuid7`: RFC 9562 UUIDv7 implementation (36 characters, chronological).
+- `obase.auth` submodule: Authentication utilities.
+  - `jwt_create` / `jwt_verify` using `pyjwt`.
+  - `bcrypt_hash` / `bcrypt_verify` using `bcrypt`.
+  - `totp_secret_generate` / `totp_qr_url` / `totp_verify` using `pyotp` and `qrcode`.
+- `obase.secrets` submodule: Secrets management.
+  - `SecretsBackend` protocol and registry.
+  - `EnvFileBackend` for reading secrets from `.env` files.
+  - `get_secret` / `set_secret` global APIs.
 
 ---
 

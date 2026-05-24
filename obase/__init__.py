@@ -1,7 +1,7 @@
 """obase — Helios 生态横切基础设施库 (OBASE_SPEC v0.2)."""
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -11,7 +11,9 @@ from obase.exceptions import (
     CacheError,
     EnvLoadError,
     FSError,
+    ObaseAuthError,
     OBaseError,
+    ObaseSecretsError,
     PauseRequested,
     PricingNotConfiguredError,
     ProviderDiscoveryError,
@@ -25,17 +27,21 @@ from obase.provider_registry import ProviderRegistry
 from obase.rate_limit import RateLimiter, RateLimitRegistry
 from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.trail import Trail, load_trail, query_trail
+from obase.uuid7 import uuid7
 
 __all__ = [
     "__version__",
     "bootstrap",
     "load_env",
+    "uuid7",
     "Cache",
     "cached",
     "CostTracker",
     "PricingEntry",
     "PricingTable",
     "OBaseError",
+    "ObaseAuthError",
+    "ObaseSecretsError",
     "StageContractViolation",
     "PauseRequested",
     "BudgetExceeded",
