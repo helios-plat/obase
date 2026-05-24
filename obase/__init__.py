@@ -1,7 +1,7 @@
 """obase — Helios 生态横切基础设施库 (OBASE_SPEC v0.2)."""
 from __future__ import annotations
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -31,6 +31,9 @@ from obase.uuid7 import uuid7
 
 # Sprint 11 — Notification Compliance (D2)
 from obase.notification import NotificationComplianceFilter
+
+# Sprint 13 — Intraday Poll Scheduler (D1)
+from obase.scheduler import IntradayPollScheduler
 
 __all__ = [
     "__version__",
@@ -71,4 +74,5 @@ __all__ = [
     "load_trail",
     "query_trail",
     "NotificationComplianceFilter",
+    "IntradayPollScheduler",
 ]

@@ -105,3 +105,9 @@ All notable changes to obase are documented in this file.
 
 ### Known Issues(留 v0.1.1)
 - `OBaseRegistryConflict` 异常类定义在 `provider_registry.py` 而非 `exceptions.py`,轻微架构 inconsistency,不阻塞使用,留 v0.1.1 微调
+
+## [0.4.0] - 2026-05-25
+
+### Added — Sprint 13 — Intraday Poll Scheduler (D1)
+
+- `obase.scheduler.IntradayPollScheduler` — Schedule handlers at intraday time windows with exception isolation.
