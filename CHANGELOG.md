@@ -6,6 +6,21 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — P7-B1 — MCP Server Facade
+
+- `obase.mcp_server` — MCP (Model Context Protocol) FastMCP Facade.
+  - `SkillDef` — Pydantic model for ergonomic MCP Tool definition.
+    - Fields: `name`, `description`, `input_schema`, `output_schema` (optional), `handler`.
+    - `alias_generator=to_camel` → serialises as `inputSchema`/`outputSchema` on MCP wire.
+  - `MCPServer` — Fully-encapsulated FastMCP Facade.
+    - `__init__(*, name, version)` — Reports name + version in MCP capability negotiation.
+    - `register_skill(skill_def)` — Registers a `SkillDef` as a FastMCP tool.
+    - `serve_stdio()` — stdio transport (Claude Desktop, etc.).
+    - `serve_streamable_http(host, port)` — Streamable HTTP transport (MCP 2025-03+).
+  - `MCPServerError` / `MCPProtocolError` — Error hierarchy.
+  - Dependency: `mcp>=1.27` added to `pyproject.toml`.
+  - Test coverage: 11 tests, 100% line coverage.
+
 ### Added — P6-B1 — Template Module
 
 - `obase.template` — YAML prompt template loading, validation, and rendering.
