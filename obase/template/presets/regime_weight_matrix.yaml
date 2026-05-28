@@ -1,0 +1,28 @@
+version: "1.0.0"
+description: >
+  Regime-based dynamic weight adjustment offsets.
+  Each offset is ADDED to the base weight for that dimension.
+
+regimes:
+  bull:
+    offsets:
+      trend: 0.10
+      momentum: 0.08
+      onchain: 0.05
+      mean_reversion: -0.06
+      sentiment: 0.02
+  bear:
+    offsets:
+      defense: 0.10
+      liquidity: 0.08
+      onchain: 0.05
+      trend: -0.08
+      momentum: -0.05
+      sentiment: 0.02
+  volatile:
+    offsets:
+      volatility: 0.12
+      options: 0.08
+      trend: -0.05
+      momentum: -0.05
+      mean_reversion: -0.04
