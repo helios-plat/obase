@@ -1,7 +1,7 @@
 """obase — Helios 生态横切基础设施库 (OBASE_SPEC v0.2)."""
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -34,6 +34,16 @@ from obase.notification import NotificationComplianceFilter
 
 # Sprint 13 — Intraday Poll Scheduler (D1)
 from obase.scheduler import IntradayPollScheduler
+
+# W抽-01 — 8 new submodules from Helios extraction
+from obase import collector_base
+from obase import email_client
+from obase import environ_processor_base
+from obase import ohlcv_store
+from obase import price_store
+from obase import symbol_normalize
+from obase import telegram_client
+from obase import ts_writer
 
 __all__ = [
     "__version__",
@@ -75,4 +85,13 @@ __all__ = [
     "query_trail",
     "NotificationComplianceFilter",
     "IntradayPollScheduler",
+    # W抽-01 submodules
+    "collector_base",
+    "email_client",
+    "environ_processor_base",
+    "ohlcv_store",
+    "price_store",
+    "symbol_normalize",
+    "telegram_client",
+    "ts_writer",
 ]
