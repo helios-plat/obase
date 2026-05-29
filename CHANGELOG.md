@@ -6,6 +6,14 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — obase.text.fuzzy_match (v0.5.0)
+
+- `obase.text.fuzzy_match(*, query, candidates, threshold, top_k)` → `list[FuzzyMatchResult]` — Fuzzy string matching backed by `rapidfuzz.fuzz.WRatio`. Returns candidates scoring ≥ threshold (0.0–1.0), sorted by score descending, capped at top_k results. Supports Unicode/Chinese. Raises `FuzzyMatchError` on invalid arguments.
+- `obase.text.FuzzyMatchResult` — Pydantic model with `candidate: str` and `score: float` fields.
+- `obase.text.FuzzyMatchError` — Raised on invalid threshold (outside [0.0, 1.0]) or top_k < 1.
+- Dependency: `rapidfuzz>=3.0` added to `pyproject.toml`.
+- 12 tests across exact/no-match/threshold boundary/multi-candidate sorting/Unicode Chinese/invalid-args cases.
+
 ### Fixed
 
 - fix: align __init__ version with pyproject (0.4.0)

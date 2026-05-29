@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -35,6 +35,9 @@ from obase.notification import NotificationComplianceFilter
 
 # Sprint 13 — Intraday Poll Scheduler (D1)
 from obase.scheduler import IntradayPollScheduler
+
+# text — fuzzy matching utilities
+from obase import text
 
 # W抽-01 — 8 new submodules from Helios extraction
 from obase import collector_base
@@ -86,6 +89,8 @@ __all__ = [
     "query_trail",
     "NotificationComplianceFilter",
     "IntradayPollScheduler",
+    # text submodule
+    "text",
     # W抽-01 submodules
     "collector_base",
     "email_client",
