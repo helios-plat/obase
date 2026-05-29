@@ -6,6 +6,10 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- fix: align __init__ version with pyproject (0.4.0)
+
 ### Added — Aegis Step 15 B1 — obase.auth Argon2 + JWT HS256
 
 - `obase.auth.argon2_hash(*, password)` → `str` — Argon2id hash (OWASP recommended defaults: time_cost=3, memory_cost=64MB). Raises `ArgonHashError` on library failure.
