@@ -6,6 +6,15 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — obase.notify + obase.audit (v0.6.0)
+
+- `obase.notify.telegram_send(request: TelegramRequest) -> TelegramResult` — Async Telegram Bot API sendMessage helper. Returns typed `TelegramResult(ok, message_id, error)` — network/HTTP errors captured as `ok=False`, never raised. `TelegramRequest` is a Pydantic model (bot_token, chat_id, text, parse_mode, disable_notification).
+- `obase.audit.format_audit_entry(*, actor, action, resource_type, resource_id, detail)` — Pure sync factory returning a validated `AuditEntry` (Pydantic) with uuid7 id and UTC timestamp. No side effects.
+- `obase.audit.AuditWriter` — `runtime_checkable Protocol` with `async write(entry: AuditEntry) -> None`. obase ships the contract; implementations live in consuming services.
+- Dependency: `httpx>=0.27` added to `pyproject.toml` (was used by telegram_client but previously undeclared).
+- notify: 7 tests (request validation / success / HTTP error / connection error / payload fields / missing message_id / URL token).
+- audit: 11 tests (entry fields / uuid7 format / UTC timestamp / default detail / unique ids / nested detail / entry validation / Protocol isinstance / wrong method / concrete writer call).
+
 ### Added — obase.text.fuzzy_match (v0.5.0)
 
 - `obase.text.fuzzy_match(*, query, candidates, threshold, top_k)` → `list[FuzzyMatchResult]` — Fuzzy string matching backed by `rapidfuzz.fuzz.WRatio`. Returns candidates scoring ≥ threshold (0.0–1.0), sorted by score descending, capped at top_k results. Supports Unicode/Chinese. Raises `FuzzyMatchError` on invalid arguments.
