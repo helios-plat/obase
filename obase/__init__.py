@@ -1,7 +1,8 @@
 """obase — Helios 生态横切基础设施库 (OBASE_SPEC v0.2)."""
+
 from __future__ import annotations
 
-__version__ = "0.5.0"
+__version__ = "0.4.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached

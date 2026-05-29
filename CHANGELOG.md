@@ -6,6 +6,19 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- fix: align __init__ version with pyproject (0.4.0)
+
+### Added — Aegis Step 15 B1 — obase.auth Argon2 + JWT HS256
+
+- `obase.auth.argon2_hash(*, password)` → `str` — Argon2id hash (OWASP recommended defaults: time_cost=3, memory_cost=64MB). Raises `ArgonHashError` on library failure.
+- `obase.auth.argon2_verify(*, password, hash)` → `bool` — Returns `False` on mismatch, raises `ArgonHashError` on invalid hash format (distinguishes wrong-password from tampered-hash-field).
+- `obase.auth.jwt_sign_hs256(*, payload, secret, expires_in_seconds)` → `str` — HS256 JWT signing. Enforces `secret ≥ 32 bytes`. Auto-adds `iat`; adds `exp` when `expires_in_seconds` is not `None`. Raises `JWTSignError`.
+- `obase.auth.jwt_verify_hs256(*, token, secret, check_exp)` → `dict` — HS256 JWT decode. Algorithm locked to `HS256` (rejects HS512 etc.). `check_exp=False` for debug use. Raises `JWTVerifyError`.
+- Dependency: `argon2-cffi>=23.0` added to `pyproject.toml` (`pyjwt>=2.8` already present).
+- 25 tests, 100% line coverage on new files.
+
 ### Added — P7-B1 — MCP Server Facade
 
 - `obase.mcp_server` — MCP (Model Context Protocol) FastMCP Facade.
