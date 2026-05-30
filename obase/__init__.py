@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -42,6 +42,9 @@ from obase import text
 # B6 — notify + audit submodules
 from obase import notify
 from obase import audit
+
+# B1 — webhook signing submodule
+from obase import webhook
 
 # W抽-01 — 8 new submodules from Helios extraction
 from obase import collector_base
@@ -98,6 +101,8 @@ __all__ = [
     # B6 submodules
     "notify",
     "audit",
+    # B1 submodule
+    "webhook",
     # W抽-01 submodules
     "collector_base",
     "email_client",

@@ -6,6 +6,13 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — obase.webhook.sign_payload (v0.7.0)
+
+- obase 0.7.0: added obase.webhook.sign_payload (HMAC webhook signing, GitHub/Stripe-style)
+- `obase.webhook.sign_payload(*, payload, secret, algo)` → `str` — HMAC-SHA256/SHA512 signing. Accepts `dict` (JSON-serialized, sort_keys=True) or raw `bytes`. Enforces `secret ≥ 32 bytes`. `default=str` handles non-serializable values (e.g. datetime). Returns lowercase hex digest.
+- `obase.webhook.WebhookSignError` — raised on short secret, unsupported algo, or non-bytes/dict payload.
+- 9 tests: dict+sha256 / bytes+sha256 / sha512 / short-secret / datetime-default-str / deterministic / different-secret / sort-keys / unsupported-algo.
+
 ### Added — obase.notify + obase.audit (v0.6.0)
 
 - `obase.notify.telegram_send(request: TelegramRequest) -> TelegramResult` — Async Telegram Bot API sendMessage helper. Returns typed `TelegramResult(ok, message_id, error)` — network/HTTP errors captured as `ok=False`, never raised. `TelegramRequest` is a Pydantic model (bot_token, chat_id, text, parse_mode, disable_notification).
