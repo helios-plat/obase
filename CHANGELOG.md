@@ -6,6 +6,17 @@ All notable changes to obase are documented in this file.
 
 ## [Unreleased]
 
+### Added — obase.oauth2_provider (v0.8.0)
+
+- `obase.oauth2_provider.build_authorize_url(config, state)` → `str` — OAuth2 Authorization Code Flow Step 1. Builds authorization URL with query params: `response_type=code`, `client_id`, `redirect_uri`, `scope`, `state` (URL-encoded via `urllib.parse.urlencode`).
+- `obase.oauth2_provider.exchange_code_for_token(*, config, code)` → `OAuth2Token` — Step 2. POST to `token_url` with `application/x-www-form-urlencoded`. Raises `OAuth2TokenExchangeError` when the response JSON has an `"error"` field; raises `OAuth2HTTPError` on HTTP 4xx/5xx without an OAuth2 error body.
+- `obase.oauth2_provider.fetch_userinfo_raw(*, config, token)` → `dict[str, Any]` — Step 3. GET `userinfo_url` with `Authorization: Bearer`. Returns raw dict without normalizing fields. Raises `OAuth2UserInfoError` when `userinfo_url` is `None`; raises `OAuth2HTTPError` on HTTP failure.
+- `obase.oauth2_provider.OAuth2ProviderConfig` — Pydantic v2 model: `name`, `client_id`, `client_secret`, `authorize_url`, `token_url`, `userinfo_url` (optional), `scope` (default `"openid email profile"`), `redirect_uri`.
+- `obase.oauth2_provider.OAuth2Token` — Pydantic v2 model: `access_token`, `refresh_token`, `expires_in`, `token_type`, `scope`, `id_token` (all optional except `access_token`).
+- `obase.oauth2_provider.OAuth2Error` — base exception; subclasses: `OAuth2TokenExchangeError`, `OAuth2UserInfoError`, `OAuth2HTTPError`.
+- HTTP via `httpx.AsyncClient` (already a declared dependency at `>=0.27`).
+- 9 tests: authorize URL params / state URL-encoding / token exchange success / OAuth2 error / HTTP 500 error / userinfo success / no-URL error / HTTP 401 error / token model optional fields.
+
 ### Added — obase.webhook.sign_payload (v0.7.0)
 
 - obase 0.7.0: added obase.webhook.sign_payload (HMAC webhook signing, GitHub/Stripe-style)
