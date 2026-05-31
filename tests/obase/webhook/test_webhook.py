@@ -55,3 +55,7 @@ class TestSignPayload:
     def test_unsupported_algo_raises(self):
         with pytest.raises(WebhookSignError, match="unsupported algo"):
             sign_payload(payload={"x": 1}, secret=_SECRET_32, algo="sha1")  # type: ignore[arg-type]
+
+    def test_wrong_type_payload_raises(self) -> None:
+        with pytest.raises(WebhookSignError, match="payload must be dict or bytes"):
+            sign_payload(payload="a string", secret=_SECRET_32)  # type: ignore[arg-type]
