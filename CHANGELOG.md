@@ -4,6 +4,23 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.8.0] - 2026-06-01 — Stratum Batch 3: 5 new obase submodules
+
+### Added — Stratum B3
+
+- `obase.crypto` — AES-256-GCM token encryption + Argon2id key derivation (`encrypt_token`, `decrypt_token`, `derive_master_key`, `CryptoError`)
+- `obase.migration` — Alembic wrapper (`run_migration`, `MigrationResult`); supports upgrade/downgrade/history/current/stamp
+- `obase.circuit_breaker` — Thread-safe circuit breaker CLOSED/OPEN/HALF_OPEN state machine (`CircuitBreaker`, `CircuitBreakerOpenError`)
+- `obase.retry` — Exponential backoff retry policy for async+sync functions (`RetryPolicy`)
+- `obase.config` — Multi-path YAML config loader with deep merge + env var overrides (`load_config`, `watch_config`)
+- `obase.mcp_client` — Deferred to v0.9.0 (complex protocol integration)
+
+### Notes
+- 34 new tests covering all 5 submodules
+- alembic + sqlalchemy added to obase venv for obase.migration
+
+---
+
 ## [Unreleased]
 
 ### Added — obase.oauth2_provider (v0.8.0)

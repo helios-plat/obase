@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -112,4 +112,29 @@ __all__ = [
     "symbol_normalize",
     "telegram_client",
     "ts_writer",
+    # Stratum B3 (v0.8.0)
+    "crypto",
+    "migration",
+    "circuit_breaker",
+    "retry",
+    "CryptoError",
+    "encrypt_token",
+    "decrypt_token",
+    "derive_master_key",
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+    "RetryPolicy",
+    "MigrationResult",
+    "run_migration",
 ]
+
+# --- Stratum B3 obase submodules (v0.8.0) ---
+from obase import crypto
+from obase import migration
+from obase import circuit_breaker
+from obase import retry
+from obase import config as config_loader
+from obase.crypto import CryptoError, decrypt_token, derive_master_key, encrypt_token
+from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from obase.retry import RetryPolicy
+from obase.migration import MigrationResult, run_migration
