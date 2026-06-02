@@ -4,6 +4,15 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.9.0] - 2026-06-03 — B2+B3: edge-tts + DashScope wanxiang provider registration
+
+### Added
+
+- `obase.providers._tts.edge_tts` — `EdgeTTSProvider` (callable class) + `register()`: Microsoft Edge Read Aloud TTS, free cloud, 300+ voices, registers as `("tts", "edge_tts")` in ProviderRegistry
+- `obase.providers._image.dashscope_wanxiang` — `DashScopeWanxiangProvider` + `register()`: DashScope wanxiang text-to-image via async task API (submit → poll → download), registers as `("image_gen", "wanxiang")` when `DASHSCOPE_API_KEY` present
+- `obase.providers.register_default_providers()` — registers all built-in providers; silently skips missing deps/secrets
+- `pyproject.toml`: `[project.optional-dependencies] tts = ["edge-tts>=6.1"]`
+
 ## [0.8.0] - 2026-06-01 — Stratum Batch 3: 5 new obase submodules
 
 ### Added — Stratum B3
