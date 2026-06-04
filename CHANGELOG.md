@@ -4,6 +4,11 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.10.2] — 2026-06-05
+
+### Fixed
+- `dns_pinned_transport`: Narrowed Docker bridge allowlist from full `172.16.0.0/12` (too broad — 16M addresses) to only `172.17.0.0/16` (Docker default bridge — 65K addresses). Restored `172.16.0.0/12` to `_BLOCKED_NETWORKS`. Added `_ALLOWED_DOCKER_NETWORKS` checked before the blocklist. Non-default Docker subnets (`172.18.x`, `172.31.x`, etc.) remain blocked.
+
 ## [0.10.1] — 2026-06-05
 
 ### Fixed

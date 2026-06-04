@@ -8,8 +8,10 @@ Security: checks ALL A and AAAA records, blocks private/reserved/unspecified/mul
 ranges. HTTPS uses ssl.create_default_context() with a connect() override so TLS
 SNI and certificate validation still use the original hostname (not the raw IP).
 
-Docker bridge (172.16.0.0/12) is intentionally NOT blocked — internal Docker
-services are not an SSRF attack surface in container deployments.
+Docker bridge: ONLY the default Docker bridge 172.17.0.0/16 is explicitly allowed
+(checked before the blocklist). The full RFC-1918 172.16.0.0/12 range remains
+blocked. If your deployment uses a non-default bridge subnet, add it to
+_ALLOWED_DOCKER_NETWORKS.
 """
 
 from __future__ import annotations
@@ -21,15 +23,25 @@ import ssl
 import urllib.request
 
 
+# Narrow allowlist for Docker internal service calls.
+# Checked BEFORE _BLOCKED_NETWORKS — only what's listed here bypasses the block.
+# Default Docker bridge is 172.17.0.0/16. Expand only if your deployment
+# uses additional subnets for legitimate internal services.
+_ALLOWED_DOCKER_NETWORKS: list[ipaddress.IPv4Network] = [
+    ipaddress.ip_network("172.17.0.0/16"),  # Docker default bridge (searxng etc.)
+]
+
 # Private/reserved IP ranges to block.
-# Docker bridge 172.16.0.0/12 is intentionally excluded — container-to-container
-# calls are internal service mesh traffic, not SSRF attack surface.
+# 172.16.0.0/12 is kept in the blocklist; only 172.17.0.0/16 (above) is allowed.
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),  # "this" network
     ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 private
     ipaddress.ip_network("100.64.0.0/10"),  # CGNAT (RFC 6598)
     ipaddress.ip_network("127.0.0.0/8"),  # loopback
     ipaddress.ip_network("169.254.0.0/16"),  # link-local / cloud metadata endpoint
+    ipaddress.ip_network(
+        "172.16.0.0/12"
+    ),  # RFC 1918 private (Docker bridge excepted via allowlist)
     ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918 private
     ipaddress.ip_network("::1/128"),  # IPv6 loopback
     ipaddress.ip_network("::ffff:0:0/96"),  # IPv4-mapped IPv6
@@ -43,11 +55,11 @@ class SSRFBlockedError(Exception):
 
 
 def is_safe_ip(ip: str) -> bool:
-    """Return True if the IP is a public, routable address.
+    """Return True if the IP is a public, routable, or explicitly allowed address.
 
-    Blocks loopback, link-local, metadata endpoints, RFC 1918 (except Docker bridge),
-    CGNAT, multicast, reserved, and unspecified addresses.
-    Docker bridge 172.16.0.0/12 is explicitly allowed.
+    Allowlist (_ALLOWED_DOCKER_NETWORKS) is checked first — entries there bypass
+    the blocklist. Everything else follows: loopback, link-local, metadata endpoints,
+    full RFC-1918, CGNAT, multicast, reserved, and unspecified addresses are blocked.
     """
     try:
         addr = ipaddress.ip_address(ip)
@@ -58,7 +70,11 @@ def is_safe_ip(ip: str) -> bool:
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
         addr = addr.ipv4_mapped
 
-    # Explicit blocklist (not is_private — that would block Docker bridge too)
+    # Narrow Docker allowlist takes precedence over the blocklist
+    if any(addr in net for net in _ALLOWED_DOCKER_NETWORKS):
+        return True
+
+    # stdlib attributes + explicit blocklist
     if (
         addr.is_loopback
         or addr.is_link_local

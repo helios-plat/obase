@@ -11,6 +11,7 @@ import pytest
 from obase.http.dns_pinned_transport import (
     DNSPinnedHTTPSHandler,
     SSRFBlockedError,
+    _ALLOWED_DOCKER_NETWORKS,
     _BLOCKED_NETWORKS,
     is_safe_ip,
     make_ssrf_safe_opener,
@@ -56,12 +57,16 @@ class TestIsPublicIp:
     def test_private_10_is_blocked(self):
         assert is_safe_ip("10.0.0.1") is False
 
-    def test_docker_bridge_172_17_is_allowed(self):
-        # Docker bridge 172.16.0.0/12 intentionally NOT blocked —
-        # container-to-container calls are not an SSRF attack surface.
+    def test_docker_default_bridge_is_allowed(self):
+        # Only the default Docker bridge 172.17.0.0/16 is in the allowlist.
         assert is_safe_ip("172.17.0.1") is True
-        assert is_safe_ip("172.16.0.1") is True
-        assert is_safe_ip("172.31.255.254") is True
+        assert is_safe_ip("172.17.255.254") is True
+
+    def test_non_default_docker_subnets_are_blocked(self):
+        # 172.16.0.0/12 minus 172.17.0.0/16 remains blocked.
+        assert is_safe_ip("172.16.0.1") is False
+        assert is_safe_ip("172.31.255.254") is False
+        assert is_safe_ip("172.18.0.1") is False
 
     def test_loopback_is_blocked(self):
         assert is_safe_ip("127.0.0.1") is False
@@ -209,9 +214,9 @@ class TestBlockedNetworks:
     def test_contains_rfc1918_10(self):
         assert ipaddress.ip_network("10.0.0.0/8") in _BLOCKED_NETWORKS
 
-    def test_does_not_contain_rfc1918_172(self):
-        # Docker bridge: 172.16.0.0/12 intentionally NOT in blocklist
-        assert ipaddress.ip_network("172.16.0.0/12") not in _BLOCKED_NETWORKS
+    def test_contains_rfc1918_172(self):
+        # 172.16.0.0/12 is back in the blocklist; only 172.17.0.0/16 is allowed via allowlist
+        assert ipaddress.ip_network("172.16.0.0/12") in _BLOCKED_NETWORKS
 
     def test_contains_rfc1918_192(self):
         assert ipaddress.ip_network("192.168.0.0/16") in _BLOCKED_NETWORKS
@@ -314,3 +319,26 @@ class TestEndToEndHTTPS:
         with patch("socket.getaddrinfo", return_value=_addrinfo_ipv4("192.168.0.1")):
             with pytest.raises(SSRFBlockedError):
                 resolve_and_check("lan.fake")
+
+
+# ---------------------------------------------------------------------------
+# _ALLOWED_DOCKER_NETWORKS — narrow allowlist verification
+# ---------------------------------------------------------------------------
+
+
+class TestAllowedDockerNetworks:
+    def test_contains_docker_default_bridge(self):
+        assert ipaddress.ip_network("172.17.0.0/16") in _ALLOWED_DOCKER_NETWORKS
+
+    def test_does_not_contain_full_172_16_slash12(self):
+        # Only the /16 is explicitly allowed, not the broader /12
+        assert ipaddress.ip_network("172.16.0.0/12") not in _ALLOWED_DOCKER_NETWORKS
+
+    def test_allowlist_takes_precedence_over_blocklist(self):
+        # 172.17.0.1 is in the blocked /12 but whitelisted via /16
+        assert is_safe_ip("172.17.0.1") is True
+
+    def test_non_allowlisted_172_remains_blocked(self):
+        # Other subnets in 172.16.0.0/12 are still blocked
+        assert is_safe_ip("172.18.0.1") is False
+        assert is_safe_ip("172.16.0.1") is False
