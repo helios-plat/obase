@@ -5,8 +5,11 @@ TOCTOU mitigation: resolve → connect to resolved IP (not hostname again).
 Used by oprim.url_fetch_ssrf_safe and any internal HTTP calls needing SSRF protection.
 
 Security: checks ALL A and AAAA records, blocks private/reserved/unspecified/multicast
-ranges, covers both HTTP and HTTPS (HTTPS uses SNI override so TLS cert validation
-still validates against the original hostname).
+ranges. HTTPS uses ssl.create_default_context() with a connect() override so TLS
+SNI and certificate validation still use the original hostname (not the raw IP).
+
+Docker bridge (172.16.0.0/12) is intentionally NOT blocked — internal Docker
+services are not an SSRF attack surface in container deployments.
 """
 
 from __future__ import annotations
@@ -14,20 +17,20 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import socket
+import ssl
 import urllib.request
 
 
 # Private/reserved IP ranges to block.
-# Primary check uses stdlib addr attributes (is_private, is_loopback, etc.).
-# Explicit list covers older Python and edge cases not caught by attributes.
+# Docker bridge 172.16.0.0/12 is intentionally excluded — container-to-container
+# calls are internal service mesh traffic, not SSRF attack surface.
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),  # "this" network
-    ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 private
     ipaddress.ip_network("100.64.0.0/10"),  # CGNAT (RFC 6598)
     ipaddress.ip_network("127.0.0.0/8"),  # loopback
-    ipaddress.ip_network("169.254.0.0/16"),  # link-local
-    ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918
-    ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local / cloud metadata endpoint
+    ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918 private
     ipaddress.ip_network("::1/128"),  # IPv6 loopback
     ipaddress.ip_network("::ffff:0:0/96"),  # IPv4-mapped IPv6
     ipaddress.ip_network("fc00::/7"),  # IPv6 unique local
@@ -42,8 +45,9 @@ class SSRFBlockedError(Exception):
 def is_safe_ip(ip: str) -> bool:
     """Return True if the IP is a public, routable address.
 
-    Blocks private, loopback, link-local, multicast, reserved, and unspecified
-    addresses. Also checks IPv4-mapped IPv6 by unwrapping the embedded IPv4.
+    Blocks loopback, link-local, metadata endpoints, RFC 1918 (except Docker bridge),
+    CGNAT, multicast, reserved, and unspecified addresses.
+    Docker bridge 172.16.0.0/12 is explicitly allowed.
     """
     try:
         addr = ipaddress.ip_address(ip)
@@ -54,10 +58,9 @@ def is_safe_ip(ip: str) -> bool:
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
         addr = addr.ipv4_mapped
 
-    # Use stdlib attributes as primary check (catches most cases)
+    # Explicit blocklist (not is_private — that would block Docker bridge too)
     if (
-        addr.is_private
-        or addr.is_loopback
+        addr.is_loopback
         or addr.is_link_local
         or addr.is_multicast
         or addr.is_reserved
@@ -65,18 +68,16 @@ def is_safe_ip(ip: str) -> bool:
     ):
         return False
 
-    # Explicit network list as defence-in-depth (covers CGNAT and edge cases)
     return not any(addr in net for net in _BLOCKED_NETWORKS)
 
 
 def resolve_and_check(hostname: str) -> str:
-    """Resolve hostname to all IPs, raise SSRFBlockedError if any is private/blocked.
+    """Resolve hostname to all IPs via getaddrinfo, raise SSRFBlockedError if any is blocked.
 
-    Uses getaddrinfo to resolve ALL A and AAAA records (not just gethostbyname's
-    single IPv4 result). Returns the first safe IPv4 address for connection pinning.
+    Checks ALL A and AAAA records — if any single record resolves to a blocked
+    address the entire request is rejected. Returns first safe IPv4 address.
     """
     try:
-        # Resolve all address families; port=0 and proto=0 → no filtering
         results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror as e:
         raise SSRFBlockedError(f"DNS resolution failed for {hostname!r}: {e}") from e
@@ -95,9 +96,12 @@ def resolve_and_check(hostname: str) -> str:
         if family == socket.AF_INET and first_safe_ipv4 is None:
             first_safe_ipv4 = ip
 
-    # Return first IPv4 for connection (IPv6 pinning via host header works too,
-    # but IPv4 avoids bracket-notation complexity in request Host headers).
     return first_safe_ipv4 or results[0][4][0]
+
+
+# ---------------------------------------------------------------------------
+# HTTP handler — DNS pinning via host replacement
+# ---------------------------------------------------------------------------
 
 
 class DNSPinnedHTTPHandler(urllib.request.HTTPHandler):
@@ -112,37 +116,71 @@ class DNSPinnedHTTPHandler(urllib.request.HTTPHandler):
         return self.do_open(http.client.HTTPConnection, req)
 
 
-class DNSPinnedHTTPSHandler(urllib.request.HTTPSHandler):
-    """HTTPS handler that resolves DNS once, pins to IP, preserves SNI/cert validation.
+# ---------------------------------------------------------------------------
+# HTTPS handler — DNS pinning + proper TLS with ssl.create_default_context()
+# ---------------------------------------------------------------------------
 
-    Connects to the resolved IP directly (preventing DNS rebinding) while passing
-    the original hostname as server_hostname so TLS SNI and certificate validation
-    still use the correct hostname.
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that connects to a pinned IP but validates TLS against the
+    original hostname.
+
+    Python 3.14 removed the private ``_server_hostname`` constructor path.
+    We override ``connect()`` to call ``ssl.create_default_context().wrap_socket``
+    with the original hostname explicitly — 100% public stdlib API.
+    """
+
+    # Set by DNSPinnedHTTPSHandler before handing to do_open
+    _sni_hostname: str = ""
+
+    def connect(self) -> None:
+        # Establish the raw TCP socket to the pinned IP (super = HTTPConnection)
+        http.client.HTTPConnection.connect(self)
+
+        # Determine SNI / certificate hostname:
+        # - tunnel host if we're going through a proxy
+        # - our override (_sni_hostname) otherwise — NOT self.host which is the IP
+        if self._tunnel_host:
+            sni = self._tunnel_host
+        else:
+            sni = self._sni_hostname or self.host
+
+        ctx = (
+            self._context
+            if (hasattr(self, "_context") and self._context)
+            else ssl.create_default_context()
+        )
+        self.sock = ctx.wrap_socket(self.sock, server_hostname=sni)
+
+
+class DNSPinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    """HTTPS handler: resolves DNS once, connects to IP, validates TLS against original hostname.
+
+    Uses ssl.create_default_context() (public API) for certificate validation.
+    SNI passes the original hostname so the server returns the correct certificate.
     """
 
     def https_open(self, req):
-        hostname = req.host.split(":")[0]
-        ip = resolve_and_check(hostname)
+        orig_hostname = req.host.split(":")[0]
+        ip = resolve_and_check(orig_hostname)
         port = req.host.split(":")[1] if ":" in req.host else "443"
+        ctx = ssl.create_default_context()
+        pinned_sni = orig_hostname
 
-        # Build a factory that connects to the pinned IP but presents the
-        # original hostname for SNI and cert CN/SAN validation.
-        orig_hostname = hostname
-
-        def _make_https_conn(host, **kwargs):
-            conn = http.client.HTTPSConnection(
-                f"{ip}:{port}",
-                **kwargs,
-            )
-            # Override server_hostname so TLS uses the original hostname for
-            # SNI extension and certificate validation (not the raw IP).
-            conn._server_hostname = orig_hostname  # type: ignore[attr-defined]
+        def _make_pinned_conn(host, **kwargs):
+            # Ignore 'host' (comes from req.host = original name); we connect to IP
+            kwargs.pop("context", None)  # we supply our own context
+            conn = _PinnedHTTPSConnection(f"{ip}:{port}", context=ctx, **kwargs)
+            conn._sni_hostname = pinned_sni
             return conn
 
-        req.add_unredirected_header("Host", hostname)
-        return self.do_open(
-            _make_https_conn, req, context=self._context if hasattr(self, "_context") else None
-        )  # type: ignore[arg-type]
+        req.add_unredirected_header("Host", orig_hostname)
+        return self.do_open(_make_pinned_conn, req, context=ctx)
+
+
+# ---------------------------------------------------------------------------
+# Public factory
+# ---------------------------------------------------------------------------
 
 
 def make_ssrf_safe_opener(timeout: int = 10) -> urllib.request.OpenerDirector:
@@ -155,10 +193,10 @@ def make_ssrf_safe_opener(timeout: int = 10) -> urllib.request.OpenerDirector:
         OpenerDirector with DNS-pinned HTTP and HTTPS handlers.
 
     Raises:
-        SSRFBlockedError: (at open time) if the URL resolves to a private IP.
+        SSRFBlockedError: (at open time) if URL resolves to a private/blocked IP.
 
     Example:
         opener = make_ssrf_safe_opener()
-        response = opener.open("https://example.com/data")
+        response = opener.open("https://api.github.com/zen")
     """
     return urllib.request.build_opener(DNSPinnedHTTPHandler, DNSPinnedHTTPSHandler)

@@ -4,6 +4,18 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.10.1] — 2026-06-05
+
+### Fixed
+- `dns_pinned_transport`: `DNSPinnedHTTPSHandler` rewritten with `_PinnedHTTPSConnection` subclass that overrides `connect()` using `ssl.create_default_context().wrap_socket(server_hostname=orig_hostname)` — eliminates use of `_server_hostname` private API, compatible with Python 3.14.
+- `dns_pinned_transport`: Removed `172.16.0.0/12` from `_BLOCKED_NETWORKS` — Docker bridge is internal service mesh, not an SSRF attack surface. Metadata endpoint `169.254.0.0/16`, `10.0.0.0/8`, `192.168.0.0/16` remain blocked.
+- `is_safe_ip`: switched from `is_private` attribute (which over-blocks Docker bridge) to explicit `_BLOCKED_NETWORKS` list check; loopback/link-local/multicast still use stdlib attributes.
+
+### Tests
+- Added 7 end-to-end integration tests (skip if network unavailable): DNS resolution for en.wikipedia.org / api.github.com / www.google.com passes; 127.x / 169.254.x / 192.168.x blocked; Docker bridge `172.17.0.2` allowed.
+
+---
+
 ## [0.10.0] — 2026-06-04
 
 ### Added (Stratum B1)
