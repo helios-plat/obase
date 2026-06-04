@@ -4,6 +4,14 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.10.0] — 2026-06-04
+
+### Added (Stratum B1)
+- `obase.http.dns_pinned_transport` — DNS-pinned HTTP transport, SSRF/DNS-rebinding prevention (RFC1918 block)
+- `obase.observability.tracer` — OpenTelemetry-compatible span tracer with in-memory noop default
+
+---
+
 ## [0.9.0] - 2026-06-03 — B2+B3: edge-tts + DashScope wanxiang provider registration
 
 ### Added

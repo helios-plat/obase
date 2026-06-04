@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -126,6 +126,16 @@ __all__ = [
     "RetryPolicy",
     "MigrationResult",
     "run_migration",
+    # Stratum B1 (v0.10.0)
+    "http",
+    "observability",
+    "SSRFBlockedError",
+    "is_safe_ip",
+    "make_ssrf_safe_opener",
+    "resolve_and_check",
+    "Span",
+    "Tracer",
+    "get_tracer",
 ]
 
 # --- Stratum B3 obase submodules (v0.8.0) ---
@@ -138,3 +148,14 @@ from obase.crypto import CryptoError, decrypt_token, derive_master_key, encrypt_
 from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from obase.retry import RetryPolicy
 from obase.migration import MigrationResult, run_migration
+
+# --- Stratum B1 obase submodules (v0.10.0) ---
+from obase import http
+from obase import observability
+from obase.http.dns_pinned_transport import (
+    SSRFBlockedError,
+    is_safe_ip,
+    make_ssrf_safe_opener,
+    resolve_and_check,
+)
+from obase.observability.tracer import Span, Tracer, get_tracer
