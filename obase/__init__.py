@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.10.2"
+__version__ = "0.11.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -136,6 +136,17 @@ __all__ = [
     "Span",
     "Tracer",
     "get_tracer",
+    # v0.11.0 persistence submodule
+    "persistence",
+    "PgPool",
+    "transaction",
+    "upsert_batch",
+    "vector_search",
+    "VectorMetric",
+    "ensure_table",
+    "ensure_column",
+    "ensure_index",
+    "ensure_extension",
 ]
 
 # --- Stratum B3 obase submodules (v0.8.0) ---
@@ -159,3 +170,17 @@ from obase.http.dns_pinned_transport import (
     resolve_and_check,
 )
 from obase.observability.tracer import Span, Tracer, get_tracer
+
+# --- v0.11.0 persistence submodule ---
+from obase import persistence
+from obase.persistence import (
+    PgPool,
+    VectorMetric,
+    ensure_column,
+    ensure_extension,
+    ensure_index,
+    ensure_table,
+    transaction,
+    upsert_batch,
+    vector_search,
+)

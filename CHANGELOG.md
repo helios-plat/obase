@@ -4,6 +4,29 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.11.0] — 2026-06-05
+
+### Added (persistence submodule)
+- `obase.persistence` — new subpackage: PostgreSQL + pgvector connection pool and query
+  primitives. Boundary: obase provides cross-cutting infrastructure; business schemas and
+  thin service wrappers belong in consumer projects (AII, Stratum, Hevi, Tide, Aegis).
+- `PgPool` — named asyncpg connection pool with class-level registry.
+  `PgPool.create(name=..., dsn=..., enable_vector=True)` registers pgvector type codec per
+  connection. `PgPool.get(name)` / `PgPool.list_pools()` / `pool.close()`.
+- `transaction(pool)` — async context manager; commits on clean exit, rolls back on exception.
+- `upsert_batch(pool, table, rows, conflict_columns, update_columns)` — batch
+  `INSERT … ON CONFLICT` using asyncpg positional parameters; returns affected row count.
+- `vector_search(pool, table, vector_column, query_vector, metric, top_k, …)` — pgvector
+  HNSW nearest-neighbour retrieval; supports cosine / l2 / inner_product metrics with
+  optional `filter_sql` and `select_columns`.
+- `ensure_table` / `ensure_column` / `ensure_index` / `ensure_extension` — idempotent DDL
+  helpers (`IF NOT EXISTS`); HNSW index WITH options supported.
+- New dependencies: `asyncpg>=0.29`, `pgvector>=0.3`.
+- 30 tests: 8 unit (mocked asyncpg) + 22 integration (real PG + pgvector; skip if unavailable).
+- CI: `.github/workflows/ci.yml` adds `pgvector/pgvector:pg16` service for integration tests.
+
+---
+
 ## [0.10.2] — 2026-06-05
 
 ### Fixed
