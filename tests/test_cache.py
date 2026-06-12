@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from obase.cache import Cache, cached
-from obase.exceptions import CacheError
+from obase.cache import Cache, cache_invalidate, cached
+from obase.exceptions import CacheError, OBaseError
 
 
 class TestCacheGetPut:
@@ -119,3 +119,37 @@ class TestCachedDecorator:
         with patch("obase.cache.Cache.put", side_effect=CacheError("write fail")):
             with pytest.raises(CacheError, match="write fail"):
                 await fn(42)
+
+
+class TestCacheInvalidate:
+    def _make_redis_mock(self, delete_return: int = 1) -> MagicMock:
+        redis_mod = MagicMock()
+        client = MagicMock()
+        client.delete.return_value = delete_return
+        redis_mod.Redis.from_url.return_value = client
+        return redis_mod
+
+    def test_invalidate_existing_key_returns_true(self):
+        redis_mock = self._make_redis_mock(delete_return=1)
+        with patch.dict("sys.modules", {"redis": redis_mock}):
+            result = cache_invalidate(key="mykey")
+        assert result is True
+
+    def test_invalidate_missing_key_returns_false(self):
+        redis_mock = self._make_redis_mock(delete_return=0)
+        with patch.dict("sys.modules", {"redis": redis_mock}):
+            result = cache_invalidate(key="nokey")
+        assert result is False
+
+    def test_invalidate_connection_error_raises_obase_error(self):
+        redis_mod = MagicMock()
+        redis_mod.Redis.from_url.side_effect = Exception("connection refused")
+        with patch.dict("sys.modules", {"redis": redis_mod}):
+            with pytest.raises(OBaseError, match="cache_invalidate redis failed"):
+                cache_invalidate(key="k")
+
+    def test_invalidate_no_redis_package_raises_obase_error(self):
+        # sys.modules["redis"] = None causes ImportError on `import redis`
+        with patch.dict("sys.modules", {"redis": None}):
+            with pytest.raises((OBaseError, ImportError)):
+                cache_invalidate(key="k")

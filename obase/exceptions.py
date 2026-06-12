@@ -73,3 +73,15 @@ class ObaseAuthError(OBaseError):
 
 class ObaseSecretsError(OBaseError):
     retryable = False
+
+
+class OBaseConnectionError(OBaseError):
+    retryable = True
+
+
+class OBaseNotFoundError(OBaseError):
+    retryable = False
+
+
+class OBaseValidationError(OBaseError):
+    retryable = False

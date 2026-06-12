@@ -6,6 +6,14 @@ service-layer wrappers belong in consumer projects (AII, Stratum, …).
 
 from __future__ import annotations
 
+from obase.persistence.crud import (
+    insert_one,
+    query,
+    read_one,
+    soft_delete_one,
+    update_one,
+    write_one,
+)
 from obase.persistence.ddl import (
     ensure_column,
     ensure_extension,
@@ -27,4 +35,10 @@ __all__ = [
     "ensure_column",
     "ensure_index",
     "ensure_extension",
+    "insert_one",
+    "query",
+    "read_one",
+    "update_one",
+    "soft_delete_one",
+    "write_one",
 ]

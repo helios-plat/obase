@@ -4,6 +4,32 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.12.0] — 2026-06-12
+
+### Added (batch-0: async CRUD + docker + cache + extras)
+
+- **`obase.persistence.crud`** — 6 async CRUD primitives aligned to oprim.db_* semantics:
+  `insert_one`, `read_one`, `update_one`, `soft_delete_one`, `query`, `write_one`.
+  All use `PgPool` + `transaction`; no sync wrappers. (Owner D2 decision: pure async.)
+- **`obase.docker`** — new subpackage migrating 24 docker_* functions + 5 aliases from
+  `oprim._docker`. Submodules: `client` (models + helpers), `containers`, `images`,
+  `networks`, `volumes`, `compose`. Uses `obase.exceptions`. `oprim._docker` NOT deleted
+  (deprecated; removal in batch-4 / oprim v3.0.0).
+- **`obase.cache.cache_invalidate`** — standalone Redis key invalidation function.
+  Requires `obase[cache]`. `oprim.cache_invalidate` not deleted.
+- **`alembic>=1.13`** added to core dependencies (was imported but missing from pyproject).
+
+### Changed
+- `pyproject.toml` version `0.11.0` → `0.12.0` (MINOR — additive only, zero breaking).
+- New optional-dependency extras: `obase[docker]` (`docker>=7.0`), `obase[cache]` (`redis>=4.2`).
+
+### Tests
+- `tests/test_crud.py` — 19 tests (unit + PG integration) for all 6 CRUD functions.
+- `tests/test_docker_module.py` — 37 mock-based tests covering all docker submodules.
+- `tests/test_cache.py` extended — 4 new `TestCacheInvalidate` tests.
+
+---
+
 ## [0.11.0] — 2026-06-05
 
 ### Added (persistence submodule)

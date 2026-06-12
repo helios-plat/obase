@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from obase.exceptions import CacheError
+from obase.exceptions import CacheError, OBaseError
 from obase.fs import FS
 
 log = structlog.get_logger()
@@ -78,6 +78,31 @@ class Cache:
                 p.unlink(missing_ok=True)
                 removed += 1
         return removed
+
+
+def cache_invalidate(
+    *,
+    key: str,
+    redis_url: str = "redis://localhost:6379/0",
+) -> bool:
+    """Invalidate (delete) a single Redis cache key.
+
+    Returns True if the key existed and was deleted, False if not found.
+    Raises OBaseError on connection failure.
+    """
+    try:
+        import redis as redis_lib
+    except ImportError as exc:
+        raise OBaseError(
+            "redis package not installed; install obase[cache] to use cache_invalidate"
+        ) from exc
+
+    try:
+        client = redis_lib.Redis.from_url(redis_url)
+        deleted = client.delete(key)
+        return int(deleted) > 0  # type: ignore[arg-type]
+    except Exception as exc:
+        raise OBaseError(f"cache_invalidate redis failed: {exc}") from exc
 
 
 def cached(cache: Cache, key_fn: Callable[..., str] | None = None) -> Callable[..., Any]:
