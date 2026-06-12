@@ -265,3 +265,53 @@ class TestWriteOne:
             conflict_on=["id"],
         )
         assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# PgPool.get_or_create (unit — no real PG needed)
+# ---------------------------------------------------------------------------
+
+
+class TestGetOrCreate:
+    async def test_same_dsn_returns_same_pool(self):
+        fake_pool = MagicMock(spec=PgPool)
+        dsn = "postgresql://user:pw@host:5432/db"
+
+        with patch.object(PgPool, "create", new=AsyncMock(return_value=fake_pool)) as mock_create, \
+                patch.object(PgPool, "get", side_effect=[KeyError("miss"), fake_pool]):
+            first = await PgPool.get_or_create(dsn=dsn)
+            assert first is fake_pool
+            mock_create.assert_awaited_once()
+
+    async def test_different_dsns_use_different_names(self):
+        dsn_a = "postgresql://a:pw@host/db_a"
+        dsn_b = "postgresql://b:pw@host/db_b"
+
+        calls: list[str] = []
+
+        async def _create(*, name: str, dsn: str, **kw: object) -> MagicMock:
+            calls.append(name)
+            m = MagicMock(spec=PgPool)
+            m.name = name
+            return m
+
+        with patch.object(PgPool, "create", new=_create), \
+                patch.object(PgPool, "get", side_effect=KeyError("miss")):
+            await PgPool.get_or_create(dsn=dsn_a)
+            await PgPool.get_or_create(dsn=dsn_b)
+
+        assert len(calls) == 2
+        assert calls[0] != calls[1]
+        assert calls[0].startswith("_auto_")
+        assert calls[1].startswith("_auto_")
+
+    async def test_existing_pool_reused_no_create(self):
+        fake_pool = MagicMock(spec=PgPool)
+        dsn = "postgresql://user:pw@host:5432/db"
+
+        with patch.object(PgPool, "create", new=AsyncMock()) as mock_create, \
+                patch.object(PgPool, "get", return_value=fake_pool):
+            result = await PgPool.get_or_create(dsn=dsn)
+
+        assert result is fake_pool
+        mock_create.assert_not_awaited()

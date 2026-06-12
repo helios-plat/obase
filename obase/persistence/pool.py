@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -79,6 +80,18 @@ class PgPool:
     def clear(cls) -> None:
         """Clear registry without closing pools. For testing only."""
         cls._registry.clear()
+
+    @classmethod
+    async def get_or_create(cls, *, dsn: str, **kw: Any) -> PgPool:
+        """Return existing pool keyed by DSN or create a new one.
+
+        Safe for stable few-DSN scenarios (not per-user).
+        """
+        name = f"_auto_{hashlib.sha1(dsn.encode()).hexdigest()[:12]}"
+        try:
+            return cls.get(name)
+        except KeyError:
+            return await cls.create(name=name, dsn=dsn, **kw)
 
     # ------------------------------------------------------------------
     # Instance API
