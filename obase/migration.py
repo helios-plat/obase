@@ -3,11 +3,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from alembic import command
-from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
 from pydantic import BaseModel
-from sqlalchemy import create_engine
 
 
 class MigrationResult(BaseModel):
@@ -47,6 +43,12 @@ def run_migration(
     allowed = {"upgrade", "downgrade", "history", "current", "stamp"}
     if action not in allowed:
         raise ValueError(f"Unknown migration action: {action!r}. Allowed: {allowed}")
+
+    # Lazy imports: alembic + sqlalchemy are optional heavy deps; only loaded when called.
+    from alembic import command
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from sqlalchemy import create_engine
 
     cfg = Config()
     cfg.set_main_option("script_location", str(migrations_path))

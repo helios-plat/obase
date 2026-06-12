@@ -1302,7 +1302,6 @@ name = "obase"
 version = "0.12.0"
 source = { editable = "." }
 dependencies = [
-    { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "asyncpg" },
     { name = "bcrypt" },
@@ -1325,11 +1324,13 @@ cache = [
     { name = "redis" },
 ]
 dev = [
+    { name = "alembic" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "sqlalchemy" },
     { name = "types-pyjwt" },
     { name = "types-pyyaml" },
     { name = "types-qrcode" },
@@ -1337,13 +1338,18 @@ dev = [
 docker = [
     { name = "docker" },
 ]
+migration = [
+    { name = "alembic" },
+    { name = "sqlalchemy" },
+]
 tts = [
     { name = "edge-tts" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.13" },
+    { name = "alembic", marker = "extra == 'dev'", specifier = ">=1.13" },
+    { name = "alembic", marker = "extra == 'migration'", specifier = ">=1.13" },
     { name = "argon2-cffi", specifier = ">=23.0" },
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "bcrypt", specifier = ">=4.1" },
@@ -1365,13 +1371,15 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.0" },
     { name = "redis", marker = "extra == 'cache'", specifier = ">=4.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "sqlalchemy", marker = "extra == 'dev'", specifier = ">=2.0" },
+    { name = "sqlalchemy", marker = "extra == 'migration'", specifier = ">=2.0" },
     { name = "structlog", specifier = ">=24.0" },
     { name = "tenacity", specifier = ">=8.0" },
     { name = "types-pyjwt", marker = "extra == 'dev'" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "types-qrcode", marker = "extra == 'dev'" },
 ]
-provides-extras = ["tts", "docker", "cache", "dev"]
+provides-extras = ["migration", "tts", "docker", "cache", "dev"]
 
 [[package]]
 name = "packaging"

@@ -9,6 +9,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Pre-import alembic submodules so patch("alembic.command") / patch("alembic.runtime.migration.MigrationContext") work.
+import alembic.command  # noqa: F401
+import alembic.runtime.migration  # noqa: F401
+
 # ---------------------------------------------------------------------------
 # obase.crypto
 # ---------------------------------------------------------------------------
@@ -90,28 +94,25 @@ class TestMigration:
 
     def test_mock_alembic_upgrade_success(self, tmp_path: Path) -> None:
         with (
-            patch("obase.migration.command") as mock_cmd,
-            patch("obase.migration.create_engine") as mock_engine,
+            patch("alembic.command") as mock_cmd,
+            patch("sqlalchemy.create_engine") as mock_engine,
+            patch("alembic.runtime.migration.MigrationContext") as mock_mc,
         ):
-            # Set up mock engine / connection / MigrationContext
             mock_conn = MagicMock()
             mock_ctx = MagicMock()
             mock_ctx.get_current_revision.return_value = "abc123"
-            mock_engine.return_value.__enter__ = MagicMock(return_value=mock_engine.return_value)
             mock_engine.return_value.connect.return_value.__enter__ = MagicMock(
                 return_value=mock_conn
             )
             mock_engine.return_value.connect.return_value.__exit__ = MagicMock(return_value=False)
+            mock_mc.configure.return_value = mock_ctx
 
-            with patch("obase.migration.MigrationContext") as mock_mc:
-                mock_mc.configure.return_value = mock_ctx
-
-                result = run_migration(
-                    dsn="postgresql://localhost/test",
-                    migrations_path=tmp_path,
-                    action="upgrade",
-                    target="head",
-                )
+            result = run_migration(
+                dsn="postgresql://localhost/test",
+                migrations_path=tmp_path,
+                action="upgrade",
+                target="head",
+            )
 
             mock_cmd.upgrade.assert_called_once()
             assert result.action == "upgrade"
@@ -119,9 +120,9 @@ class TestMigration:
 
     def test_mock_engine_current_revision(self, tmp_path: Path) -> None:
         with (
-            patch("obase.migration.command"),
-            patch("obase.migration.create_engine") as mock_engine,
-            patch("obase.migration.MigrationContext") as mock_mc,
+            patch("alembic.command"),
+            patch("sqlalchemy.create_engine") as mock_engine,
+            patch("alembic.runtime.migration.MigrationContext") as mock_mc,
         ):
             mock_conn = MagicMock()
             mock_engine.return_value.connect.return_value.__enter__ = MagicMock(
@@ -142,7 +143,7 @@ class TestMigration:
             assert result.current_revision == "rev_xyz"
 
     def test_migration_failure_returns_error_result(self, tmp_path: Path) -> None:
-        with patch("obase.migration.command") as mock_cmd:
+        with patch("alembic.command") as mock_cmd:
             mock_cmd.upgrade.side_effect = RuntimeError("DB connection refused")
             result = run_migration(
                 dsn="postgresql://localhost/test",
