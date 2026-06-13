@@ -184,3 +184,5 @@ from obase.persistence import (
     upsert_batch,
     vector_search,
 )
+from obase.lsp import LspClientManager, LspServerHandle
+from obase.mcp_client import McpClientRegistry, McpClientHandle
