@@ -17,6 +17,7 @@ class ProviderRegistry:
     """Class-level registry mapping (category, name) → callable."""
 
     _providers: dict[tuple[str, str], Callable[..., Any]] = {}
+    _capabilities: dict[tuple[str, str], list[str]] = {}
 
     @classmethod
     def register(
@@ -87,9 +88,43 @@ class ProviderRegistry:
                 ) from exc
 
     @classmethod
+    def register_with_capability(
+        cls,
+        category: str,
+        name: str,
+        fn: Callable[..., Any],
+        capabilities: list[str],
+        replace: bool = False,
+    ) -> None:
+        """Register a provider and associate it with capability tags.
+
+        Example:
+            ProviderRegistry.register_with_capability(
+                "video", "wan22", wan22_fn, ["i2v", "t2v", "fps24"]
+            )
+        """
+        cls.register(category, name, fn, replace=replace)
+        cls._capabilities[(category, name)] = list(capabilities)
+
+    @classmethod
+    def capabilities(cls, category: str, name: str) -> list[str]:
+        """Return capability tags for a registered provider (empty list if none)."""
+        return list(cls._capabilities.get((category, name), []))
+
+    @classmethod
+    def find_by_capability(cls, category: str, capability: str) -> list[str]:
+        """Return provider names in a category that have the given capability tag."""
+        return [
+            n
+            for (cat, n), caps in cls._capabilities.items()
+            if cat == category and capability in caps
+        ]
+
+    @classmethod
     def clear(cls) -> None:
         """Remove all registered providers (useful in tests)."""
         cls._providers.clear()
+        cls._capabilities.clear()
 
 
 class OBaseRegistryConflict(Exception):
