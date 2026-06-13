@@ -147,6 +147,8 @@ __all__ = [
     "ensure_column",
     "ensure_index",
     "ensure_extension",
+    # v0.13.0 sympy_runtime
+    "sympy_runtime",
 ]
 
 # --- Stratum B3 obase submodules (v0.8.0) ---
@@ -186,3 +188,6 @@ from obase.persistence import (
 )
 from obase.lsp import LspClientManager, LspServerHandle
 from obase.mcp_client import McpClientRegistry, McpClientHandle
+
+# v0.13.0 — sympy_runtime sandbox (M-0 batch)
+from obase import sympy_runtime
