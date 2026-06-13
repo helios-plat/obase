@@ -288,3 +288,8 @@ All notable changes to obase are documented in this file.
 ### Added
 - `obase.lsp`: LspServerHandle Protocol + LspClientManager (lsp_* oprim 的 server handle)
 - `obase.mcp_client`: McpClientHandle Protocol + McpClientRegistry (mcp_* oprim 的 client handle)
+
+## [0.12.2] — 2026-06-13
+### Added
+- `obase.lsp`: LspServerHandle Protocol + LspClientManager (lsp_* oprim 的 server handle)
+- `obase.mcp_client`: McpClientHandle Protocol + McpClientRegistry (mcp_* oprim 的 client handle)
