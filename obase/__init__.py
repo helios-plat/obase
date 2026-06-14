@@ -124,6 +124,7 @@ __all__ = [
     "CircuitBreaker",
     "CircuitBreakerOpenError",
     "RetryPolicy",
+    "retry_with_backoff",
     "MigrationResult",
     "run_migration",
     # Stratum B1 (v0.10.0)
@@ -159,7 +160,7 @@ from obase import retry
 from obase import config as config_loader
 from obase.crypto import CryptoError, decrypt_token, derive_master_key, encrypt_token
 from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
-from obase.retry import RetryPolicy
+from obase.retry import RetryPolicy, retry_with_backoff
 from obase.migration import MigrationResult, run_migration
 
 # --- Stratum B1 obase submodules (v0.10.0) ---
