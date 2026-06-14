@@ -1,131 +1,82 @@
+"""
+LLM / Vision provider 注册与获取
+================================
+obase/provider_registry.py
+"""
+
 from __future__ import annotations
+from typing import Protocol, runtime_checkable, Optional, Dict, Any, List
+import logging
+from abc import abstractmethod
 
-from collections.abc import Callable
-from importlib.metadata import entry_points
-from typing import Any
+logger = logging.getLogger(__name__)
 
-import structlog
+@runtime_checkable
+class LLMCaller(Protocol):
+    """LLM 调用协议。"""
+    async def __call__(
+        self, 
+        *, 
+        messages: List[Dict[str, str]], 
+        max_tokens: int = 1000,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        response_format: Optional[str] = None
+    ) -> Dict[str, Any]: 
+        ...
 
-from obase.exceptions import ProviderDiscoveryError, ProviderNotFoundError
-
-log = structlog.get_logger()
-
-_ENTRY_POINT_GROUP = "obase.providers"
-
+@runtime_checkable
+class VLMCaller(Protocol):
+    """Vision-LLM 调用协议。"""
+    async def __call__(
+        self, 
+        *, 
+        prompt: str, 
+        image_b64: str,
+        response_format: str = "text"
+    ) -> Dict[str, Any]: 
+        ...
 
 class ProviderRegistry:
-    """Class-level registry mapping (category, name) → callable."""
-
-    _providers: dict[tuple[str, str], Callable[..., Any]] = {}
-    _capabilities: dict[tuple[str, str], list[str]] = {}
-
-    @classmethod
-    def register(
-        cls,
-        category: str,
-        name: str,
-        fn: Callable[..., Any],
-        replace: bool = False,
-    ) -> None:
-        key = (category, name)
-        if key in cls._providers and not replace:
-            raise OBaseRegistryConflict(
-                f"Provider already registered: category={category!r} name={name!r}. "
-                "Use replace=True to override."
-            )
-        cls._providers[key] = fn
-        log.info("obase.provider_registry.registered", category=category, name=name)
+    """LLM 提供商注册中心（单例）。"""
+    _instance: Optional[ProviderRegistry] = None
+    _llms: Dict[str, LLMCaller] = {}
+    _vlms: Dict[str, VLMCaller] = {}
 
     @classmethod
-    def get(cls, category: str, name: str) -> Callable[..., Any]:
-        key = (category, name)
-        if key not in cls._providers:
-            raise ProviderNotFoundError(
-                f"No provider registered for category={category!r} name={name!r}"
-            )
-        return cls._providers[key]
+    def get(cls) -> ProviderRegistry:
+        if cls._instance is None:
+            cls._instance = ProviderRegistry()
+        return cls._instance
 
-    @classmethod
-    def get_caller(cls, provider: str, model: str) -> Callable[..., Any]:
-        """Convenience method to get an LLM caller."""
-        return cls.get("llm", provider)
+    def register_llm(self, name: str, caller: LLMCaller) -> None:
+        self._llms[name] = caller
+        logger.info(f"Registered LLM: {name}")
 
-    @classmethod
-    def has(cls, category: str, name: str) -> bool:
-        return (category, name) in cls._providers
+    def register_vlm(self, name: str, caller: VLMCaller) -> None:
+        self._vlms[name] = caller
+        logger.info(f"Registered VLM: {name}")
 
-    @classmethod
-    def list_providers(cls, category: str | None = None) -> list[tuple[str, str]]:
-        if category is None:
-            return list(cls._providers.keys())
-        return [(c, n) for (c, n) in cls._providers if c == category]
+    def llm(self, name: str = "default") -> LLMCaller:
+        if name not in self._llms:
+            if "default" in self._llms and name != "default":
+                return self._llms["default"]
+            raise RuntimeError(f"LLM provider '{name}' not registered")
+        return self._llms[name]
 
-    @classmethod
-    def auto_discover(cls) -> None:
-        """Load all entry points in group 'obase.providers'."""
-        try:
-            eps = entry_points(group=_ENTRY_POINT_GROUP)
-        except Exception as exc:
-            raise ProviderDiscoveryError(f"entry_points scan failed: {exc}") from exc
+    def vlm(self, name: str = "default") -> VLMCaller:
+        if name not in self._vlms:
+            if "default" in self._vlms and name != "default":
+                return self._vlms["default"]
+            raise RuntimeError(f"VLM provider '{name}' not registered")
+        return self._vlms[name]
 
-        for ep in eps:
-            try:
-                fn = ep.load()
-                parts = ep.name.split(".", 1)
-                if len(parts) != 2:
-                    log.warning(
-                        "obase.provider_registry.bad_entry_point",
-                        name=ep.name,
-                        reason="expected 'category.name' format",
-                    )
-                    continue
-                category, pname = parts
-                cls.register(category, pname, fn, replace=True)
-                log.info("obase.provider_registry.discovered", ep=ep.name)
-            except Exception as exc:
-                raise ProviderDiscoveryError(
-                    f"Failed loading entry point {ep.name!r}: {exc}"
-                ) from exc
-
-    @classmethod
-    def register_with_capability(
-        cls,
-        category: str,
-        name: str,
-        fn: Callable[..., Any],
-        capabilities: list[str],
-        replace: bool = False,
-    ) -> None:
-        """Register a provider and associate it with capability tags.
-
-        Example:
-            ProviderRegistry.register_with_capability(
-                "video", "wan22", wan22_fn, ["i2v", "t2v", "fps24"]
-            )
-        """
-        cls.register(category, name, fn, replace=replace)
-        cls._capabilities[(category, name)] = list(capabilities)
-
-    @classmethod
-    def capabilities(cls, category: str, name: str) -> list[str]:
-        """Return capability tags for a registered provider (empty list if none)."""
-        return list(cls._capabilities.get((category, name), []))
-
-    @classmethod
-    def find_by_capability(cls, category: str, capability: str) -> list[str]:
-        """Return provider names in a category that have the given capability tag."""
-        return [
-            n
-            for (cat, n), caps in cls._capabilities.items()
-            if cat == category and capability in caps
-        ]
-
-    @classmethod
-    def clear(cls) -> None:
-        """Remove all registered providers (useful in tests)."""
-        cls._providers.clear()
-        cls._capabilities.clear()
-
-
-class OBaseRegistryConflict(Exception):
-    pass
+__version__ = "0.1.0"
+__manifest__ = {
+    "version": __version__,
+    "updated_at": "2026-06-13",
+    "elements": [
+        {"name": "ProviderRegistry", "layer": "obase", "summary": "LLM/VLM 提供商注册中心"},
+        {"name": "LLMCaller", "layer": "obase", "summary": "LLM 调用协议"},
+        {"name": "VLMCaller", "layer": "obase", "summary": "VLM 调用协议"},
+    ]
+}

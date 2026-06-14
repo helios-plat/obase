@@ -191,3 +191,4 @@ from obase.mcp_client import McpClientRegistry, McpClientHandle
 
 # v0.13.0 — sympy_runtime sandbox (M-0 batch)
 from obase import sympy_runtime
+from obase.git import run_git, GitResult

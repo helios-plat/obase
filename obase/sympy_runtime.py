@@ -825,3 +825,13 @@ def latex(
 ) -> EvalResult:
     """Convenience function using the default runtime."""
     return get_runtime().to_latex(expression, timeout=timeout)
+
+
+def run_sympy(
+    expression: str,
+    variables: dict[str, Any] | None = None,
+    *,
+    timeout: float | None = None,
+) -> EvalResult:
+    """Alias for evaluate() — sandboxed SymPy expression runner."""
+    return evaluate(expression, variables, timeout=timeout)
