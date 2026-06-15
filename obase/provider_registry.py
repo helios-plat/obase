@@ -88,9 +88,9 @@ class ProviderRegistry:
         store = {"llm": cls._llms, "vlm": cls._vlms, "image_gen": cls._images}.get(category, {})
         return name in store
 
-    # 兼容旧 API: register(category, name, caller)
+    # 兼容旧 API: register(category, name, caller, replace=False)
     @classmethod
-    def register(cls, category: str, name: str, caller: Any) -> None:
+    def register(cls, category: str, name: str, caller: Any, replace: bool = False) -> None:
         if category == "llm":
             cls.get().register_llm(name, caller)
         elif category == "vlm":
