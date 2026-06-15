@@ -41,6 +41,7 @@ class ProviderRegistry:
     _instance: Optional[ProviderRegistry] = None
     _llms: Dict[str, LLMCaller] = {}
     _vlms: Dict[str, VLMCaller] = {}
+    _images: Dict[str, ImageGenCaller] = {}
 
     @classmethod
     def get(cls) -> ProviderRegistry:
@@ -70,6 +71,33 @@ class ProviderRegistry:
             raise RuntimeError(f"VLM provider '{name}' not registered")
         return self._vlms[name]
 
+    def register_image_gen(self, name: str, caller: "ImageGenCaller") -> None:
+        self._images[name] = caller
+        logger.info(f"Registered ImageGen: {name}")
+
+    def image_gen(self, name: str = "default") -> "ImageGenCaller":
+        if name not in self._images:
+            if "default" in self._images and name != "default":
+                return self._images["default"]
+            raise RuntimeError(f"ImageGen provider '{name}' not registered")
+        return self._images[name]
+
+    def has(self, category: str, name: str) -> bool:
+        """兼容旧 API: has(category, name)"""
+        store = {"llm": self._llms, "vlm": self._vlms, "image_gen": self._images}.get(category, {})
+        return name in store
+
+    # 兼容旧 API: register(category, name, caller)
+    def register(self, category: str, name: str, caller: Any) -> None:
+        if category == "llm":
+            self.register_llm(name, caller)
+        elif category == "vlm":
+            self.register_vlm(name, caller)
+        elif category == "image_gen":
+            self.register_image_gen(name, caller)
+        else:
+            raise ValueError(f"Unknown category: {category}")
+
 __version__ = "0.1.0"
 __manifest__ = {
     "version": __version__,
@@ -78,5 +106,21 @@ __manifest__ = {
         {"name": "ProviderRegistry", "layer": "obase", "summary": "LLM/VLM 提供商注册中心"},
         {"name": "LLMCaller", "layer": "obase", "summary": "LLM 调用协议"},
         {"name": "VLMCaller", "layer": "obase", "summary": "VLM 调用协议"},
+        {"name": "ImageGenCaller", "layer": "obase", "summary": "图像生成调用协议"},
     ]
 }
+
+
+@runtime_checkable
+class ImageGenCaller(Protocol):
+    """图像生成调用协议。"""
+    async def __call__(
+        self,
+        *,
+        prompt: str,
+        negative_prompt: str = "",
+        width: int = 1024,
+        height: int = 1024,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        ...

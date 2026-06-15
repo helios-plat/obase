@@ -297,3 +297,11 @@ All notable changes to obase are documented in this file.
 ## [0.15.1] — 2026-06-13
 ### Added
 - obase.git: run_git + GitResult (git subprocess 底座，供 git_* oprim 使用)
+
+## [0.15.3] — 2026-06-14
+### Added
+- ProviderRegistry: image_gen 分类 (register_image_gen / image_gen / has / register 兼容旧 API)
+- ImageGenCaller Protocol
+### Fixed
+- 修复 omodul/illustration_agent + oprim/image_generate + obase/providers/dashscope_wanxiang
+  因 image_gen 分类缺失导致的 AttributeError

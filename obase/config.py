@@ -13,6 +13,6 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "mneme-dev-secret-change-in-prod!"
     JWT_EXPIRE_SECONDS: int = 86400 * 7  # 7 days
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
