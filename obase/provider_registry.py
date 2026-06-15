@@ -82,19 +82,21 @@ class ProviderRegistry:
             raise RuntimeError(f"ImageGen provider '{name}' not registered")
         return self._images[name]
 
-    def has(self, category: str, name: str) -> bool:
+    @classmethod
+    def has(cls, category: str, name: str) -> bool:
         """兼容旧 API: has(category, name)"""
-        store = {"llm": self._llms, "vlm": self._vlms, "image_gen": self._images}.get(category, {})
+        store = {"llm": cls._llms, "vlm": cls._vlms, "image_gen": cls._images}.get(category, {})
         return name in store
 
     # 兼容旧 API: register(category, name, caller)
-    def register(self, category: str, name: str, caller: Any) -> None:
+    @classmethod
+    def register(cls, category: str, name: str, caller: Any) -> None:
         if category == "llm":
-            self.register_llm(name, caller)
+            cls.get().register_llm(name, caller)
         elif category == "vlm":
-            self.register_vlm(name, caller)
+            cls.get().register_vlm(name, caller)
         elif category == "image_gen":
-            self.register_image_gen(name, caller)
+            cls.get().register_image_gen(name, caller)
         else:
             raise ValueError(f"Unknown category: {category}")
 

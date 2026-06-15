@@ -305,3 +305,7 @@ All notable changes to obase are documented in this file.
 ### Fixed
 - 修复 omodul/illustration_agent + oprim/image_generate + obase/providers/dashscope_wanxiang
   因 image_gen 分类缺失导致的 AttributeError
+
+## [0.15.4] — 2026-06-15
+### Fixed
+- ProviderRegistry.has/register 改为 classmethod (修复类方法调用时 self 被误作参数)
