@@ -100,6 +100,14 @@ class ProviderRegistry:
         else:
             raise ValueError(f"Unknown category: {category}")
 
+    @classmethod
+    def clear(cls) -> None:
+        """Reset the registry state. Used in tests."""
+        cls._instance = None
+        cls._llms.clear()
+        cls._vlms.clear()
+        cls._images.clear()
+
 __version__ = "0.1.0"
 __manifest__ = {
     "version": __version__,

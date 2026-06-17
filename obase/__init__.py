@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.11.0"
+__version__ = "0.15.6"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
@@ -150,6 +150,11 @@ __all__ = [
     "ensure_extension",
     # v0.13.0 sympy_runtime
     "sympy_runtime",
+    # v0.15.6 obase.gpu
+    "gpu",
+    "GpuScheduler",
+    "ModelRegistry",
+    "LocalModelProvider",
 ]
 
 # --- Stratum B3 obase submodules (v0.8.0) ---
@@ -193,3 +198,7 @@ from obase.mcp_client import McpClientRegistry, McpClientHandle
 # v0.13.0 — sympy_runtime sandbox (M-0 batch)
 from obase import sympy_runtime
 from obase.git import run_git, GitResult
+
+# v0.15.6 — obase.gpu
+from obase import gpu
+from obase.gpu import GpuScheduler, ModelRegistry, LocalModelProvider
