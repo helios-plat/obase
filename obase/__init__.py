@@ -6,7 +6,7 @@ __version__ = "0.15.6"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
-from obase.cost_tracker import CostTracker, PricingEntry, PricingTable
+from obase.cost_tracker import CostTracker, PricingEntry, PricingTable, StepUsage, CostBreakdown, convert_currency
 from obase.exceptions import (
     BudgetExceeded,
     CacheError,

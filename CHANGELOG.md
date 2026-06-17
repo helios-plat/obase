@@ -309,3 +309,11 @@ All notable changes to obase are documented in this file.
 ## [0.15.4] — 2026-06-15
 ### Fixed
 - ProviderRegistry.has/register 改为 classmethod (修复类方法调用时 self 被误作参数)
+
+## [0.15.7] — 2026-06-17
+### Added
+- cost_tracker: StepUsage / CostBreakdown 共享类型
+- PricingTable.register_pricing() 动态注册单价
+- CostTracker.estimate() 单 provider 预估（不记录）
+- CostTracker.estimate_steps() 多步骤聚合预估
+- convert_currency() 货币换算（调用方提供汇率，主库不硬编码）
