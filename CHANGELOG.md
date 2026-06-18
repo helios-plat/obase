@@ -317,3 +317,14 @@ All notable changes to obase are documented in this file.
 - CostTracker.estimate() 单 provider 预估（不记录）
 - CostTracker.estimate_steps() 多步骤聚合预估
 - convert_currency() 货币换算（调用方提供汇率，主库不硬编码）
+
+## [0.15.8] — 2026-06-18
+### Fixed
+- ProviderRegistry: 补回通用 category 支持（video/audio/embedding 等任意 category）
+  register("video"/"audio"/...) 不再抛 ValueError，走 register_generic
+- ProviderRegistry: 补回 capabilities() / register_with_capability()（v0.14.1 API）
+- has() 支持任意 category（含 _generic 查找）
+- clear() 补清 _generic / _capabilities
+### Note
+- 断裂根因：v0.15.0 重写 provider_registry.py 时丢失了 v0.14.1 的通用 category + capabilities
+- v0.15.7 未引入此问题，v0.15.8 一次修复

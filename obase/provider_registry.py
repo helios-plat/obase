@@ -85,7 +85,8 @@ class ProviderRegistry:
     @classmethod
     def has(cls, category: str, name: str) -> bool:
         """兼容旧 API: has(category, name)"""
-        store = {"llm": cls._llms, "vlm": cls._vlms, "image_gen": cls._images}.get(category, {})
+        builtin = {"llm": cls._llms, "vlm": cls._vlms, "image_gen": cls._images}
+        store = builtin.get(category) or cls._generic.get(category, {})
         return name in store
 
     # 兼容旧 API: register(category, name, caller, replace=False)
@@ -98,7 +99,45 @@ class ProviderRegistry:
         elif category == "image_gen":
             cls.get().register_image_gen(name, caller)
         else:
-            raise ValueError(f"Unknown category: {category}")
+            # 通用 category（video/audio/embedding 等）
+            cls.get().register_generic(category, name, caller)
+
+
+    # 通用 category 存储（video/audio/embedding 等任意 category）
+    _generic: Dict[str, Dict[str, Any]] = {}
+
+    def register_generic(self, category: str, name: str, caller: Any) -> None:
+        """注册任意 category 的 provider（video/audio/embedding 等）。"""
+        if category not in self._generic:
+            self._generic[category] = {}
+        self._generic[category][name] = caller
+        logger.info(f"Registered {category}: {name}")
+
+    def generic(self, category: str, name: str = "default") -> Any:
+        """获取任意 category 的 provider。"""
+        store = self._generic.get(category, {})
+        if name not in store:
+            if "default" in store and name != "default":
+                return store["default"]
+            raise RuntimeError(f"{category} provider '{name}' not registered")
+        return store[name]
+
+    # capabilities API（v0.14.1 兼容）
+    _capabilities: Dict[str, Dict[str, Any]] = {}
+
+    def register_with_capability(
+        self, name: str, caller: Any, *, capabilities: Dict[str, Any]
+    ) -> None:
+        """注册 provider 并附带 capability 元数据（v0.14.1 API）。"""
+        self._llms[name] = caller
+        self._capabilities[name] = capabilities
+        logger.info(f"Registered provider with capabilities: {name}")
+
+    def capabilities(self, name: str | None = None) -> Dict[str, Any]:
+        """查询 provider capability 元数据（v0.14.1 API）。"""
+        if name is None:
+            return dict(self._capabilities)
+        return self._capabilities.get(name, {})
 
     @classmethod
     def clear(cls) -> None:
@@ -107,6 +146,8 @@ class ProviderRegistry:
         cls._llms.clear()
         cls._vlms.clear()
         cls._images.clear()
+        cls._generic.clear()
+        cls._capabilities.clear()
 
 __version__ = "0.1.0"
 __manifest__ = {
