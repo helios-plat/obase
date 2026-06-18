@@ -34,6 +34,8 @@ async def ensure_interaction_history_table(pool: PgPool):
             ("cost", "NUMERIC(12, 4)"),      # 消耗金额 (omodul 4支柱之一)
             ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
             ("completed_at", "TIMESTAMPTZ"),
+            ("retention_days", "INTEGER NOT NULL DEFAULT 365"),
+            ("is_minor", "BOOLEAN NOT NULL DEFAULT TRUE"),
         ]
     )
     await ensure_index(
@@ -117,3 +119,40 @@ async def get_student_history(
     return await query(pool=pool, sql=sql, params=[student_id, limit, offset])
 
 __version__ = "0.1.0"
+
+
+async def purge_expired_interactions(
+    pool: PgPool,
+    *,
+    dry_run: bool = False,
+) -> int:
+    """删除超过 retention_days 的互动历史记录。
+
+    未成年人数据默认保留 365 天，由服务层定期调用此函数清理。
+
+    Args:
+        pool: 数据库连接池。
+        dry_run: True 时只返回待删除数量，不实际删除。
+
+    Returns:
+        实际删除（或待删除）的记录数。
+
+    Example:
+        >>> count = await purge_expired_interactions(pool)
+        >>> print(f"Deleted {count} expired records")
+    """
+    from obase.persistence import query, execute
+    count_sql = f"""
+        SELECT COUNT(*) FROM {SCHEMA}.{TABLE}
+        WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL
+    """
+    rows = await query(pool=pool, sql=count_sql)
+    count = rows[0]["count"] if rows else 0
+    if dry_run:
+        return count
+    delete_sql = f"""
+        DELETE FROM {SCHEMA}.{TABLE}
+        WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL
+    """
+    await execute(pool=pool, sql=delete_sql)
+    return count

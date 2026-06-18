@@ -328,3 +328,8 @@ All notable changes to obase are documented in this file.
 ### Note
 - 断裂根因：v0.15.0 重写 provider_registry.py 时丢失了 v0.14.1 的通用 category + capabilities
 - v0.15.7 未引入此问题，v0.15.8 一次修复
+
+## [0.15.9] — 2026-06-18
+### Fixed
+- interaction_history: 补 retention_days/is_minor 合规字段 + purge_expired_interactions()
+  (未成年人数据保留策略，默认 365 天，服务层定期调用清理)
