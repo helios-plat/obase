@@ -333,3 +333,7 @@ All notable changes to obase are documented in this file.
 ### Fixed
 - interaction_history: 补 retention_days/is_minor 合规字段 + purge_expired_interactions()
   (未成年人数据保留策略，默认 365 天，服务层定期调用清理)
+
+## [0.15.10] — 2026-06-18
+### Fixed
+- StepUsage: 补 category 字段（default="default"，estimator 下沉所需）

@@ -146,6 +146,7 @@ class StepUsage:
     usage: float
     unit: str
     tier: str | None = None
+    category: str = "default"  # provider category（llm/video/audio/image_gen等）
 
 
 @dataclass
