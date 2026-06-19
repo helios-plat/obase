@@ -26,14 +26,15 @@ class ClaudeCaller:
         messages: List[Dict[str, str]], 
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
-        response_format: Optional[str] = None
+        response_format: Optional[str] = None,
+        system: Optional[str] = None,
     ) -> Dict[str, Any]:
         # 转换格式 (Anthropic 消息格式处理)
-        system = ""
+        system_prompt = system or ""
         user_messages = []
         for m in messages:
             if m["role"] == "system":
-                system = m["content"]
+                system_prompt = m["content"]
             else:
                 user_messages.append({"role": m["role"], "content": m["content"]})
         
@@ -43,7 +44,7 @@ class ClaudeCaller:
         response = await self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
-            system=system,
+            system=system_prompt,
             messages=user_messages,
         )
         
@@ -151,15 +152,19 @@ class DeepSeekCaller:
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
         response_format: Optional[str] = None,
+        system: Optional[str] = None,
     ) -> Dict[str, Any]:
         import httpx
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        api_messages = list(messages)
+        if system:
+            api_messages.insert(0, {"role": "system", "content": system})
         payload: Dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": api_messages,
             "max_tokens": max_tokens,
         }
         if response_format == "json":
@@ -205,15 +210,19 @@ class OpenAICaller:
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
         response_format: Optional[str] = None,
+        system: Optional[str] = None,
     ) -> Dict[str, Any]:
         import httpx
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        api_messages = list(messages)
+        if system:
+            api_messages.insert(0, {"role": "system", "content": system})
         payload: Dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": api_messages,
             "max_tokens": max_tokens,
         }
         if response_format == "json":
@@ -264,15 +273,19 @@ class QwenCaller:
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
         response_format: Optional[str] = None,
+        system: Optional[str] = None,
     ) -> Dict[str, Any]:
         import httpx
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        api_messages = list(messages)
+        if system:
+            api_messages.insert(0, {"role": "system", "content": system})
         payload: Dict[str, Any] = {
             "model": self.model,
-            "input": {"messages": messages},
+            "input": {"messages": api_messages},
             "parameters": {"max_tokens": max_tokens},
         }
         if response_format == "json":
@@ -318,11 +331,12 @@ class GeminiCaller:
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
         response_format: Optional[str] = None,
+        system: Optional[str] = None,
     ) -> Dict[str, Any]:
         import httpx
         # 转换为 Gemini 格式
         contents = []
-        system_text = ""
+        system_text = system or ""
         for m in messages:
             if m["role"] == "system":
                 system_text = m["content"]

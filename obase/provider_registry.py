@@ -20,7 +20,8 @@ class LLMCaller(Protocol):
         messages: List[Dict[str, str]], 
         max_tokens: int = 1000,
         tools: Optional[List[Dict[str, Any]]] = None,
-        response_format: Optional[str] = None
+        response_format: Optional[str] = None,
+        system: Optional[str] = None
     ) -> Dict[str, Any]: 
         ...
 
