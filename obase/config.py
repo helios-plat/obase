@@ -4,6 +4,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/mneme"
     REDIS_URL: str = "redis://localhost:6380/0"
     ANTHROPIC_API_KEY: str = "your_key_here"
+    DEEPSEEK_API_KEY: str = "your_key_here"
+    QWEN_API_KEY: str = "your_key_here"
+    DASHSCOPE_API_KEY: str = "your_key_here"
+    OPENAI_API_KEY: str = "your_key_here"
+    GEMINI_API_KEY: str = "your_key_here"
 
     MINIO_ENDPOINT: str = "localhost:9002"
     MINIO_ACCESS_KEY: str = "minioadmin"

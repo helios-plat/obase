@@ -337,3 +337,10 @@ All notable changes to obase are documented in this file.
 ## [0.15.10] — 2026-06-18
 ### Fixed
 - StepUsage: 补 category 字段（default="default"，estimator 下沉所需）
+
+## [0.15.11] — 2026-06-18
+### Added
+- llm.py: DeepSeekCaller / OpenAICaller / QwenCaller / GeminiCaller
+- register_default_providers: 多 provider 优先级注册
+  (DeepSeek > Qwen > Anthropic > OpenAI > Gemini > Mock)
+- config: DEEPSEEK_API_KEY / QWEN_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
