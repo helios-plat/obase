@@ -344,3 +344,8 @@ All notable changes to obase are documented in this file.
 - register_default_providers: 多 provider 优先级注册
   (DeepSeek > Qwen > Anthropic > OpenAI > Gemini > Mock)
 - config: DEEPSEEK_API_KEY / QWEN_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
+
+## [0.15.12] — 2026-06-18
+### Fixed
+- register_default_providers: LLM/VLM 独立 fallback，不因 VLM 缺失覆盖已注册真实 LLM
+- 提取 _MockLLM/_MockVLM 为模块级类（供独立注册使用）

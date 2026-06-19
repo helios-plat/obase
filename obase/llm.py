@@ -422,9 +422,26 @@ def register_default_providers():
             registry.register_llm("default", GeminiCaller(gemini_key))
             _llm_registered = True
 
-    if not _llm_registered or not _vlm_registered:
-        register_mock_providers()
+    # 独立判断：LLM 和 VLM 分别 fallback，互不影响
+    if not _llm_registered:
+        registry.register_llm("default", _MockLLM())
+    if not _vlm_registered:
+        registry.register_vlm("default", _MockVLM())
 
+
+
+# ---------------------------------------------------------------------------
+# Mock providers（开发/CI 用）
+# ---------------------------------------------------------------------------
+
+class _MockLLM:
+    async def __call__(self, **kwargs):
+        return {"content": "Mock Response", "usage": {"input_tokens": 0, "output_tokens": 0}}
+
+class _MockVLM:
+    async def __call__(self, **kwargs):
+        return {"content": {"questions": []}, "raw_text": "Mock VLM Response",
+                "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 def register_mock_providers():
     """注册用于开发/CI 的 Mock 提供商。"""
@@ -442,5 +459,5 @@ def register_mock_providers():
             }
             
     registry = ProviderRegistry.get()
-    registry.register_llm("default", MockLLM())
-    registry.register_vlm("default", MockVLM())
+    registry.register_llm("default", _MockLLM())
+    registry.register_vlm("default", _MockVLM())
