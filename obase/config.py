@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "mneme-dev-secret-change-in-prod!"
     JWT_EXPIRE_SECONDS: int = 86400 * 7  # 7 days
 
+    ALIYUN_ACCESS_KEY_ID: str = ""
+    ALIYUN_ACCESS_KEY_SECRET: str = ""
+    ALIYUN_NLS_APP_KEY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
