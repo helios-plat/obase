@@ -349,3 +349,5 @@ All notable changes to obase are documented in this file.
 ### Fixed
 - register_default_providers: LLM/VLM 独立 fallback，不因 VLM 缺失覆盖已注册真实 LLM
 - 提取 _MockLLM/_MockVLM 为模块级类（供独立注册使用）
+## [X.Y.Z+1] — YYYY-MM-DD
+### ...
