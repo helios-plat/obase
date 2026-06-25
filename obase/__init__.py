@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.15.6"
+__version__ = "0.16.0"
 
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, cached
