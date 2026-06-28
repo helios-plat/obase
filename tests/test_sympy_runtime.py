@@ -326,6 +326,57 @@ class TestTimeout:
         assert result.success is True
 
 
+class TestHardTimeout:
+    """沙箱红线: pathological input MUST be killed within the deadline.
+
+    These tests verify the hard, OS-enforced timeout (subprocess + SIGKILL).
+    The previous threading.Timer guard only set a flag and could NOT interrupt
+    CPU-bound SymPy work stuck inside C-level code, so it would hang forever.
+    """
+
+    def test_pathological_integral_is_killed(self) -> None:
+        # integrate(1/(x**10 + x**3 + 1), x) does not terminate in any
+        # reasonable time (verified to run >12s with no result). It must be
+        # forcibly killed and raise SymPyTimeoutError well before then.
+        rt = SymPyRuntime()
+        start = time.monotonic()
+        with pytest.raises(SymPyTimeoutError):
+            rt.integrate_expr("1/(x**10 + x**3 + 1)", "x", timeout=1.0)
+        elapsed = time.monotonic() - start
+        # If the guard were ineffective the call would block for >12s.
+        assert elapsed < 6.0, f"timeout was not enforced quickly: {elapsed:.2f}s"
+
+    def test_hard_timeout_kills_non_yielding_compute(self) -> None:
+        # Simulate a computation stuck in a tight CPU loop that never yields
+        # back to the Python-level timeout flag (the failure mode of the old
+        # threading.Timer guard). A reliable hard timeout must still kill it.
+        rt = SymPyRuntime()
+
+        def _busy() -> int:
+            while True:  # pragma: no cover - runs in killed child process
+                pass
+
+        start = time.monotonic()
+        with pytest.raises(SymPyTimeoutError):
+            rt._run_with_timeout(_busy, 0.5)
+        elapsed = time.monotonic() - start
+        assert elapsed < 4.0, f"busy loop was not killed in time: {elapsed:.2f}s"
+
+    def test_normal_solve_returns_within_timeout(self) -> None:
+        # A normal solve must still return the correct answer under the same
+        # hard-timeout path (no regression).
+        rt = SymPyRuntime()
+        result = rt.solve_equation("x**2 - 4", "x", timeout=5.0)
+        assert result.success is True
+        assert set(result.value) == {-2, 2}
+
+    def test_normal_evaluate_returns_within_timeout(self) -> None:
+        rt = SymPyRuntime()
+        result = rt.evaluate("x**2 + 2*x + 1", {"x": 3}, timeout=5.0)
+        assert result.success is True
+        assert result.value == 16
+
+
 class TestEvalResult:
     """Tests for EvalResult model."""
 

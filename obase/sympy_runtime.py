@@ -10,9 +10,8 @@ Version: obase v0.13.0
 from __future__ import annotations
 
 import ast
-import signal
-import threading
-from contextlib import contextmanager
+import multiprocessing as mp
+import queue as _queue
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -346,28 +345,115 @@ class SymPyRuntime:
                     ns[name] = val
         return ns
 
-    @contextmanager
-    def _timeout_guard(self, timeout: float | None = None):
-        """Context manager that raises SymPyTimeoutError on timeout."""
-        effective = timeout if timeout is not None else self._config.timeout_seconds
-        timer: threading.Timer | None = None
-        timeout_event = threading.Event()
+    def _run_with_timeout(
+        self, func: Callable[[], Any], timeout: float | None = None
+    ) -> Any:
+        """Execute ``func`` under a hard, OS-enforced timeout.
 
-        def _trigger() -> None:
-            timeout_event.set()
+        The computation runs in a forked child process so that even CPU-bound
+        SymPy operations stuck inside C-level code (which never yield to the
+        Python interpreter) can be forcibly killed with SIGTERM and, if needed,
+        SIGKILL. This is the deterministic 沙箱红线 guarantee: a pathological
+        input *must* be killed within the deadline.
 
-        timer = threading.Timer(effective, _trigger)
-        timer.daemon = True
-        timer.start()
+        Returns ``func()``'s result (transported back via a pickle queue), or
+        raises :class:`SymPyTimeoutError` if the deadline is exceeded. Any
+        exception raised by ``func`` is re-raised in the parent process.
+
+        On platforms without ``fork`` (non-Unix), falls back to an in-process
+        ``SIGALRM`` guard which is only effective on the main thread.
+        """
+        import time as _time
+
+        effective = (
+            timeout if timeout is not None else self._config.timeout_seconds
+        )
+
         try:
-            yield
-        finally:
-            if timer is not None:
-                timer.cancel()
-            if timeout_event.is_set():
+            ctx = mp.get_context("fork")
+        except ValueError:
+            return self._run_with_alarm(func, effective)
+
+        result_q: Any = ctx.Queue()
+
+        def _worker() -> None:
+            try:
+                result_q.put(("ok", func()))
+            except BaseException as exc:  # noqa: BLE001 - propagate to parent
+                try:
+                    result_q.put(("err", exc))
+                except Exception:
+                    result_q.put(
+                        ("err", SymPyRuntimeError(f"{type(exc).__name__}: {exc}"))
+                    )
+
+        proc = ctx.Process(target=_worker, daemon=True)
+        proc.start()
+
+        deadline = _time.monotonic() + effective
+        payload: tuple[str, Any] | None = None
+        while True:
+            remaining = deadline - _time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                payload = result_q.get(timeout=min(remaining, 0.05))
+                break
+            except _queue.Empty:
+                if not proc.is_alive():
+                    break
+
+        if payload is None:
+            # Either the deadline passed while the child was still running, or
+            # the child died without producing a result.
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(0.5)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join()
                 raise SymPyTimeoutError(
-                    f"Execution exceeded timeout of {effective}s"
+                    f"Execution exceeded timeout of {effective}s (process killed)"
                 )
+            proc.join()
+            raise SymPyRuntimeError(
+                "SymPy computation subprocess terminated without a result"
+            )
+
+        proc.join(1.0)
+        if proc.is_alive():
+            proc.terminate()
+
+        status, value = payload
+        if status == "err":
+            raise value
+        return value
+
+    def _run_with_alarm(self, func: Callable[[], Any], effective: float) -> Any:
+        """Best-effort in-process timeout via SIGALRM (main thread only).
+
+        Used only when ``fork`` is unavailable. SIGALRM can only interrupt the
+        main thread, so if called from a worker thread no hard timeout can be
+        enforced and the function is run uninterrupted.
+        """
+        import signal as _signal
+        import threading as _threading
+
+        if _threading.current_thread() is not _threading.main_thread():
+            return func()
+
+        def _handler(signum: int, frame: Any) -> None:
+            raise SymPyTimeoutError(
+                f"Execution exceeded timeout of {effective}s"
+            )
+
+        old_handler = _signal.signal(_signal.SIGALRM, _handler)
+        _signal.setitimer(_signal.ITIMER_REAL, effective)
+        try:
+            return func()
+        finally:
+            _signal.setitimer(_signal.ITIMER_REAL, 0)
+            _signal.signal(_signal.SIGALRM, old_handler)
 
     def evaluate(
         self,
@@ -404,9 +490,11 @@ class SymPyRuntime:
                     if isinstance(val, str):
                         ns[name] = sp.Symbol(val)
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_expr>", "eval")
-                raw_value = eval(code, {"__builtins__": {}}, ns)
+                return eval(code, {"__builtins__": {}}, ns)
+
+            raw_value = self._run_with_timeout(_compute, timeout)
 
             # Simplify if requested
             if simplify_result and hasattr(raw_value, "simplify"):
@@ -475,13 +563,13 @@ class SymPyRuntime:
             tree = self._validate_ast(equation)
             ns = self._make_namespace({variable: x})
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_eq>", "eval")
                 lhs = eval(code, {"__builtins__": {}}, ns)
+                # Solve lhs == 0
+                return sp.solve(lhs, x)
 
-            # Solve lhs == 0
-            with self._timeout_guard(timeout):
-                solutions = sp.solve(lhs, x)
+            solutions = self._run_with_timeout(_compute, timeout)
 
             result_str = str(solutions)
             wall_time = (time.monotonic() - start) * 1000
@@ -535,12 +623,12 @@ class SymPyRuntime:
             tree = self._validate_ast(expression)
             ns = self._make_namespace({variable: x})
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_diff>", "eval")
                 expr = eval(code, {"__builtins__": {}}, ns)
+                return sp.diff(expr, x, order)
 
-            with self._timeout_guard(timeout):
-                result_value = sp.diff(expr, x, order)
+            result_value = self._run_with_timeout(_compute, timeout)
 
             result_str = str(result_value)
             wall_time = (time.monotonic() - start) * 1000
@@ -596,15 +684,14 @@ class SymPyRuntime:
             tree = self._validate_ast(expression)
             ns = self._make_namespace({variable: x})
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_int>", "eval")
                 expr = eval(code, {"__builtins__": {}}, ns)
-
-            with self._timeout_guard(timeout):
                 if lower is not None and upper is not None:
-                    result_value = sp.integrate(expr, (x, lower, upper))
-                else:
-                    result_value = sp.integrate(expr, x)
+                    return sp.integrate(expr, (x, lower, upper))
+                return sp.integrate(expr, x)
+
+            result_value = self._run_with_timeout(_compute, timeout)
 
             result_str = str(result_value)
             wall_time = (time.monotonic() - start) * 1000
@@ -659,12 +746,12 @@ class SymPyRuntime:
                 if name not in ns and len(name) == 1:
                     ns[name] = sp.Symbol(name)
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_simplify>", "eval")
                 expr = eval(code, {"__builtins__": {}}, ns)
+                return sp.simplify(expr)
 
-            with self._timeout_guard(timeout):
-                result_value = sp.simplify(expr)
+            result_value = self._run_with_timeout(_compute, timeout)
 
             result_str = str(result_value)
             wall_time = (time.monotonic() - start) * 1000
@@ -719,12 +806,12 @@ class SymPyRuntime:
                 if name not in ns and len(name) == 1:
                     ns[name] = sp.Symbol(name)
 
-            with self._timeout_guard(timeout):
+            def _compute() -> Any:
                 code = compile(tree, "<sympy_latex>", "eval")
                 expr = eval(code, {"__builtins__": {}}, ns)
+                return sp.latex(expr)
 
-            with self._timeout_guard(timeout):
-                result_value = sp.latex(expr)
+            result_value = self._run_with_timeout(_compute, timeout)
 
             wall_time = (time.monotonic() - start) * 1000
 

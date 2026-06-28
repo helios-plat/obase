@@ -11,9 +11,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, insert
 
-from oprim.types import KCState
-from oprim.bkt import new_state_from_prior
-from oprim.fsrs_engine import fsrs_new_card
+from obase.cognitive_types import KCState, new_state_from_prior, fsrs_new_card
 from obase.prior_provider import PriorProvider
 from services.models import KCMastery, InteractionEvent
 
@@ -171,6 +169,8 @@ class PgStore:
             time_spent_seconds=event_data.get("time_spent_seconds"),
             days_since_last=event_data.get("days_since_last"),
             is_interleaved=event_data.get("is_interleaved", False),
+            item_difficulty=event_data.get("item_difficulty"),
+            predicted_confidence=event_data.get("predicted_confidence"),
             occurred_at=event_data.get("occurred_at", datetime.now(timezone.utc))
         )
         await self.session.execute(ins_stmt)
