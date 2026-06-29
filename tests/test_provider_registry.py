@@ -12,15 +12,22 @@ def _mock_fn():
     return "result"
 
 
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    ProviderRegistry.clear()
+    yield
+    ProviderRegistry.clear()
+
+
 class TestProviderRegistry:
     def test_register_and_get(self):
         ProviderRegistry.register("llm", "mock", _mock_fn)
-        fn = ProviderRegistry.get("llm", "mock")
+        fn = ProviderRegistry.get().llm("mock")
         assert fn is _mock_fn
 
     def test_get_missing_raises(self):
         with pytest.raises(ProviderNotFoundError, match="llm.*ghost"):
-            ProviderRegistry.get("llm", "ghost")
+            ProviderRegistry.get().llm("ghost")
 
     def test_has(self):
         ProviderRegistry.register("tts", "azure", _mock_fn)
@@ -41,7 +48,7 @@ class TestProviderRegistry:
 
         ProviderRegistry.register("llm", "replaceable", fn_a)
         ProviderRegistry.register("llm", "replaceable", fn_b, replace=True)
-        assert ProviderRegistry.get("llm", "replaceable")() == "b"
+        assert ProviderRegistry.get().llm("replaceable")() == "b"
 
     def test_list_providers_all(self):
         ProviderRegistry.register("img", "dalle", _mock_fn)

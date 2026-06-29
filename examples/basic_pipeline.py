@@ -56,7 +56,7 @@ async def stage_generate(data: dict, ctx: OrchestratorContext) -> dict:
             ctx.trail.emit("cache_hit", stage="generate", key=cache_key)
         return {"llm_response": cached_result}
 
-    llm = ProviderRegistry.get("llm", "mock")
+    llm = ProviderRegistry.get().llm("mock")
     response = llm(prompt)
 
     if ctx.cost:
@@ -73,7 +73,7 @@ async def stage_tts(data: dict, ctx: OrchestratorContext) -> dict:
     await rl.acquire()
 
     text = data.get("llm_response", "")
-    tts = ProviderRegistry.get("tts", "mock")
+    tts = ProviderRegistry.get().generic("tts", "mock")
     audio = tts(text)
 
     if ctx.cost:

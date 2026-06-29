@@ -37,7 +37,7 @@ class TestNoSilentFallback:
     def test_provider_not_found_raises_not_returns_none(self):
         """Provider.get raises ProviderNotFoundError, never returns None."""
         with pytest.raises(ProviderNotFoundError):
-            ProviderRegistry.get("nonexistent", "category")
+            ProviderRegistry.get().generic("nonexistent", "category")
 
     def test_budget_exceeded_raises_not_continues(self):
         """BudgetExceeded is raised by record(), not silently skipped."""

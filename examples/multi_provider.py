@@ -21,7 +21,7 @@ def anthropic_mock(prompt: str) -> str:
 
 async def call_llm(data: dict, ctx: OrchestratorContext) -> dict:
     provider_name = data.get("llm_provider", "openai")
-    llm = ProviderRegistry.get("llm", provider_name)
+    llm = ProviderRegistry.get().llm(provider_name)
     response = llm(data.get("prompt", "hello"))
     return {"response": response, "used_provider": provider_name}
 
