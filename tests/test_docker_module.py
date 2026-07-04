@@ -50,7 +50,6 @@ from obase.docker import (
 )
 from obase.exceptions import OBaseConnectionError, OBaseNotFoundError, OBaseValidationError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -191,7 +190,7 @@ class TestDockerContainerLogs:
         with patch(PATCH_CLIENT, return_value=_mock_client(c)):
             result = docker_container_logs(container_id="abc123")
         assert len(result) == 2
-        assert all(isinstance(l, LogLine) for l in result)
+        assert all(isinstance(line, LogLine) for line in result)
         assert result[0].message == "hello world"
 
     def test_empty_logs(self):

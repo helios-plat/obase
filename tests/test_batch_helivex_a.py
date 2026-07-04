@@ -1,16 +1,20 @@
 """Batch A tests: canonical_json, sha256_hash, mq, hmmlearn_runtime."""
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from importlib.util import find_spec
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from obase.canonical_json import canonical_json
 from obase.sha256_hash import sha256_hash
 
+_HAS_AIO_PIKA = find_spec("aio_pika") is not None
+_HAS_HMMLEARN = find_spec("hmmlearn") is not None
 
 # ─────────────────────────── canonical_json ────────────────────────────
 
@@ -102,6 +106,7 @@ class TestSha256Hash:
 # ─────────────────────────── mq ────────────────────────────
 
 
+@pytest.mark.skipif(not _HAS_AIO_PIKA, reason="aio_pika is not installed")
 class TestMQPublisher:
     @pytest.mark.asyncio
     async def test_connect_failure_raises(self):
@@ -152,8 +157,10 @@ class TestMQPublisher:
             await pub.connect()
             await pub.publish(b"data", routing_key="override")
             call_kwargs = mock_exchange.publish.call_args
-            assert call_kwargs.kwargs.get("routing_key") == "override" or \
-                   call_kwargs.args[-1] == "override"
+            assert (
+                call_kwargs.kwargs.get("routing_key") == "override"
+                or call_kwargs.args[-1] == "override"
+            )
 
     @pytest.mark.asyncio
     async def test_context_manager_closes(self):
@@ -170,6 +177,7 @@ class TestMQPublisher:
             mock_conn.close.assert_called_once()
 
 
+@pytest.mark.skipif(not _HAS_AIO_PIKA, reason="aio_pika is not installed")
 class TestMQConsumer:
     @pytest.mark.asyncio
     async def test_connect_failure_raises(self):
@@ -273,6 +281,7 @@ class TestMQConsumer:
 # ─────────────────────────── hmmlearn_runtime ────────────────────────────
 
 
+@pytest.mark.skipif(not _HAS_HMMLEARN, reason="hmmlearn is not installed")
 class TestHmmlearnRuntime:
     def test_fit_returns_expected_keys(self):
         from obase.hmmlearn_runtime import HmmlearnRuntime
@@ -330,6 +339,7 @@ class TestHmmlearnRuntime:
             from importlib import reload
 
             import obase.hmmlearn_runtime as _m
+
             reload(_m)
             with pytest.raises(ImportError, match="pip install"):
                 _m.HmmlearnRuntime.fit([1.0, 2.0], n_states=2)

@@ -5,9 +5,10 @@ obase/provider_registry.py
 """
 
 from __future__ import annotations
-from typing import Protocol, runtime_checkable, Optional, Dict, Any, List
+
 import logging
 from importlib.metadata import entry_points
+from typing import Any, Protocol, runtime_checkable
 
 from obase.exceptions import ProviderDiscoveryError, ProviderNotFoundError
 
@@ -21,39 +22,36 @@ class OBaseRegistryConflict(Exception):
 @runtime_checkable
 class LLMCaller(Protocol):
     """LLM 调用协议。"""
+
     async def __call__(
         self,
         *,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         max_tokens: int = 1000,
-        tools: Optional[List[Dict[str, Any]]] = None,
-        response_format: Optional[str] = None,
-        system: Optional[str] = None
-    ) -> Dict[str, Any]:
-        ...
+        tools: list[dict[str, Any]] | None = None,
+        response_format: str | None = None,
+        system: str | None = None,
+    ) -> dict[str, Any]: ...
 
 
 @runtime_checkable
 class VLMCaller(Protocol):
     """Vision-LLM 调用协议。"""
+
     async def __call__(
-        self,
-        *,
-        prompt: str,
-        image_b64: str,
-        response_format: str = "text"
-    ) -> Dict[str, Any]:
-        ...
+        self, *, prompt: str, image_b64: str, response_format: str = "text"
+    ) -> dict[str, Any]: ...
 
 
 class ProviderRegistry:
     """LLM 提供商注册中心（单例）。"""
-    _instance: Optional[ProviderRegistry] = None
-    _llms: Dict[str, LLMCaller] = {}
-    _vlms: Dict[str, VLMCaller] = {}
-    _images: Dict[str, "ImageGenCaller"] = {}
-    _generic: Dict[str, Dict[str, Any]] = {}
-    _capabilities: Dict[str, Dict[str, Any]] = {}
+
+    _instance: ProviderRegistry | None = None
+    _llms: dict[str, LLMCaller] = {}
+    _vlms: dict[str, VLMCaller] = {}
+    _images: dict[str, ImageGenCaller] = {}
+    _generic: dict[str, dict[str, Any]] = {}
+    _capabilities: dict[str, dict[str, Any]] = {}
 
     @classmethod
     def get(cls) -> ProviderRegistry:
@@ -81,7 +79,7 @@ class ProviderRegistry:
         self._vlms[name] = caller
         logger.info(f"Registered VLM: {name}")
 
-    def register_image_gen(self, name: str, caller: "ImageGenCaller", replace: bool = False) -> None:
+    def register_image_gen(self, name: str, caller: ImageGenCaller, replace: bool = False) -> None:
         if not replace and name in self._images:
             raise OBaseRegistryConflict(
                 f"ImageGen provider {name!r} already registered. Use replace=True to override."
@@ -89,7 +87,9 @@ class ProviderRegistry:
         self._images[name] = caller
         logger.info(f"Registered ImageGen: {name}")
 
-    def register_generic(self, category: str, name: str, caller: Any, replace: bool = False) -> None:
+    def register_generic(
+        self, category: str, name: str, caller: Any, replace: bool = False
+    ) -> None:
         """注册任意 category 的 provider（video/audio/embedding 等）。"""
         if category not in self._generic:
             self._generic[category] = {}
@@ -118,7 +118,7 @@ class ProviderRegistry:
             raise ProviderNotFoundError(f"vlm provider {name!r} not registered")
         return self._vlms[name]
 
-    def image_gen(self, name: str = "default") -> "ImageGenCaller":
+    def image_gen(self, name: str = "default") -> ImageGenCaller:
         if name not in self._images:
             if "default" in self._images and name != "default":
                 return self._images["default"]
@@ -222,14 +222,14 @@ class ProviderRegistry:
     # ------------------------------------------------------------------
 
     def register_with_capability(
-        self, name: str, caller: Any, *, capabilities: Dict[str, Any]
+        self, name: str, caller: Any, *, capabilities: dict[str, Any]
     ) -> None:
         """注册 provider 并附带 capability 元数据（v0.14.1 API）。"""
         self._llms[name] = caller
         self._capabilities[name] = capabilities
         logger.info(f"Registered provider with capabilities: {name}")
 
-    def capabilities(self, name: str | None = None) -> Dict[str, Any]:
+    def capabilities(self, name: str | None = None) -> dict[str, Any]:
         """查询 provider capability 元数据（v0.14.1 API）。"""
         if name is None:
             return dict(self._capabilities)
@@ -265,13 +265,14 @@ __manifest__ = {
         {"name": "VLMCaller", "layer": "obase", "summary": "VLM 调用协议"},
         {"name": "ImageGenCaller", "layer": "obase", "summary": "图像生成调用协议"},
         {"name": "OBaseRegistryConflict", "layer": "obase", "summary": "重复注册异常"},
-    ]
+    ],
 }
 
 
 @runtime_checkable
 class ImageGenCaller(Protocol):
     """图像生成调用协议。"""
+
     async def __call__(
         self,
         *,
@@ -280,5 +281,4 @@ class ImageGenCaller(Protocol):
         width: int = 1024,
         height: int = 1024,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...

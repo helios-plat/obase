@@ -8,15 +8,17 @@ Cross-service tracing: track spans across obase/oprim/service layer calls.
 """
 
 from __future__ import annotations
-from contextlib import contextmanager
-from typing import Any, Generator
+
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
 
 
 class Span:
     """A tracing span. Records name, attributes, start/end times."""
 
-    def __init__(self, name: str, parent: "Span | None" = None):
+    def __init__(self, name: str, parent: Span | None = None):
         self.name = name
         self.parent = parent
         self.attributes: dict[str, Any] = {}
@@ -25,17 +27,17 @@ class Span:
         self.end_time: float | None = None
         self.status: str = "ok"
 
-    def set_attribute(self, key: str, value: Any) -> "Span":
+    def set_attribute(self, key: str, value: Any) -> Span:
         """Set a span attribute. Returns self for chaining."""
         self.attributes[key] = value
         return self
 
-    def add_event(self, name: str, attributes: dict | None = None) -> "Span":
+    def add_event(self, name: str, attributes: dict | None = None) -> Span:
         """Add a timestamped event to the span."""
         self.events.append({"name": name, "ts": time.monotonic(), "attributes": attributes or {}})
         return self
 
-    def set_status(self, status: str) -> "Span":
+    def set_status(self, status: str) -> Span:
         """Set span status: 'ok' | 'error' | 'cancelled'."""
         self.status = status
         return self

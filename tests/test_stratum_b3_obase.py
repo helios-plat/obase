@@ -7,17 +7,17 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-# Pre-import alembic submodules so patch("alembic.command") / patch("alembic.runtime.migration.MigrationContext") work.
+# Pre-import alembic submodules so their patch() targets resolve.
 import alembic.command  # noqa: F401
 import alembic.runtime.migration  # noqa: F401
+import pytest
+
+from obase.crypto.key_derivation import derive_master_key
 
 # ---------------------------------------------------------------------------
 # obase.crypto
 # ---------------------------------------------------------------------------
 from obase.crypto.token_encryptor import CryptoError, decrypt_token, encrypt_token
-from obase.crypto.key_derivation import derive_master_key
 
 
 class TestCrypto:
@@ -80,7 +80,7 @@ class TestCrypto:
 # ---------------------------------------------------------------------------
 # obase.migration
 # ---------------------------------------------------------------------------
-from obase.migration import MigrationResult, run_migration
+from obase.migration import run_migration  # noqa: E402
 
 
 class TestMigration:
@@ -158,7 +158,7 @@ class TestMigration:
 # ---------------------------------------------------------------------------
 # obase.circuit_breaker
 # ---------------------------------------------------------------------------
-from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError  # noqa: E402
 
 
 class TestCircuitBreaker:
@@ -276,7 +276,7 @@ class TestCircuitBreaker:
 # ---------------------------------------------------------------------------
 # obase.retry
 # ---------------------------------------------------------------------------
-from obase.retry import RetryPolicy
+from obase.retry import RetryPolicy  # noqa: E402
 
 
 class TestRetryPolicy:
@@ -399,8 +399,9 @@ class TestRetryPolicy:
 # ---------------------------------------------------------------------------
 # obase.config
 # ---------------------------------------------------------------------------
-from obase.config import load_config, watch_config
-from pydantic import BaseModel as PydanticBaseModel
+from pydantic import BaseModel as PydanticBaseModel  # noqa: E402
+
+from obase.config import load_config, watch_config  # noqa: E402
 
 
 class _AppSchema(PydanticBaseModel):

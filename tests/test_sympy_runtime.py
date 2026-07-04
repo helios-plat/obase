@@ -3,26 +3,28 @@
 from __future__ import annotations
 
 import time
+from dataclasses import FrozenInstanceError
+from importlib.util import find_spec
 
 import pytest
 
 from obase.sympy_runtime import (
     EvalResult,
     RuntimeConfig,
-    SymPyEvalError,
-    SymPyMemoryError,
     SymPyRestrictedError,
     SymPyRuntime,
-    SymPyRuntimeError,
     SymPyTimeoutError,
     diff,
     evaluate,
     get_runtime,
     integrate,
     latex,
-    solve,
     simplify,
+    solve,
 )
+
+_HAS_SYMPY = find_spec("sympy") is not None
+requires_sympy = pytest.mark.skipif(not _HAS_SYMPY, reason="sympy is not installed")
 
 
 class TestRuntimeConfig:
@@ -42,10 +44,11 @@ class TestRuntimeConfig:
 
     def test_config_is_frozen(self) -> None:
         cfg = RuntimeConfig()
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             cfg.timeout_seconds = 1.0  # type: ignore[misc]
 
 
+@requires_sympy
 class TestSymPyRuntime:
     """Core runtime tests."""
 
@@ -149,6 +152,7 @@ class TestSandboxSecurity:
             rt.evaluate("a" * 100)
 
 
+@requires_sympy
 class TestSolveEquation:
     """Tests for equation solving."""
 
@@ -171,6 +175,7 @@ class TestSolveEquation:
         assert len(result.value) == 3
 
 
+@requires_sympy
 class TestDifferentiate:
     """Tests for differentiation."""
 
@@ -179,6 +184,7 @@ class TestDifferentiate:
         result = rt.differentiate("x**3", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 3 * x**2
 
@@ -187,6 +193,7 @@ class TestDifferentiate:
         result = rt.differentiate("sin(x)", "x")
         assert result.success is True
         from sympy import Symbol, cos
+
         x = Symbol("x")
         assert result.value == cos(x)
 
@@ -195,6 +202,7 @@ class TestDifferentiate:
         result = rt.differentiate("x**4", "x", order=2)
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 12 * x**2
 
@@ -205,6 +213,7 @@ class TestDifferentiate:
         assert result.value == 0
 
 
+@requires_sympy
 class TestIntegrate:
     """Tests for integration."""
 
@@ -213,6 +222,7 @@ class TestIntegrate:
         result = rt.integrate_expr("x**2", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == x**3 / 3
 
@@ -221,6 +231,7 @@ class TestIntegrate:
         result = rt.integrate_expr("x**2", "x", 0, 1)
         assert result.success is True
         from sympy import Rational
+
         assert result.value == Rational(1, 3)
 
     def test_integrate_trig(self) -> None:
@@ -228,10 +239,12 @@ class TestIntegrate:
         result = rt.integrate_expr("sin(x)", "x")
         assert result.success is True
         from sympy import Symbol, cos
+
         x = Symbol("x")
         assert result.value == -cos(x)
 
 
+@requires_sympy
 class TestSimplify:
     """Tests for simplification."""
 
@@ -248,6 +261,7 @@ class TestSimplify:
         assert result.value == 1
 
 
+@requires_sympy
 class TestToLatex:
     """Tests for LaTeX conversion."""
 
@@ -264,6 +278,7 @@ class TestToLatex:
         assert "\\frac" in result.result_str
 
 
+@requires_sympy
 class TestConvenienceFunctions:
     """Tests for module-level convenience functions."""
 
@@ -281,6 +296,7 @@ class TestConvenienceFunctions:
         result = diff("x**2", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 2 * x
 
@@ -288,6 +304,7 @@ class TestConvenienceFunctions:
         result = integrate("x", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == x**2 / 2
 
@@ -316,6 +333,7 @@ class TestGetRuntime:
         assert rt._config.timeout_seconds == 10.0
 
 
+@requires_sympy
 class TestTimeout:
     """Tests for timeout handling."""
 
@@ -326,6 +344,7 @@ class TestTimeout:
         assert result.success is True
 
 
+@requires_sympy
 class TestHardTimeout:
     """沙箱红线: pathological input MUST be killed within the deadline.
 
@@ -386,9 +405,7 @@ class TestEvalResult:
         assert result.value == 42
 
     def test_eval_result_failure(self) -> None:
-        result = EvalResult(
-            value=None, expr_str="bad", result_str="", success=False, error="fail"
-        )
+        result = EvalResult(value=None, expr_str="bad", result_str="", success=False, error="fail")
         assert result.success is False
         assert result.error == "fail"
 

@@ -22,7 +22,6 @@ import socket
 import ssl
 import urllib.request
 
-
 # Narrow allowlist for Docker internal service calls.
 # Checked BEFORE _BLOCKED_NETWORKS — only what's listed here bypasses the block.
 # Default Docker bridge is 172.17.0.0/16. Expand only if your deployment

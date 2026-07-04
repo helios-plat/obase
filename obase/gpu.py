@@ -3,7 +3,7 @@ obase.gpu — GPU Resource Scheduler and Model Management
 =======================================================
 G1 + G2 Merger + G3 Protocol Implementation.
 
-This module provides infrastructure for managing GPU VRAM and local model 
+This module provides infrastructure for managing GPU VRAM and local model
 lifecycle (load/unload) to prevent OOM in concurrent environments.
 """
 
@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import subprocess
-from typing import Dict, Optional, Any, Protocol, runtime_checkable
 from contextlib import asynccontextmanager
+from typing import Protocol, runtime_checkable
 
 # Optional imports for hardware interaction
 try:
@@ -28,12 +27,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 @runtime_checkable
 class LocalModelProvider(Protocol):
     """
-    Protocol for local model providers. 
+    Protocol for local model providers.
     Enables GpuScheduler to manage model lifecycle.
     """
+
     async def load(self) -> None:
         """Load the model into GPU memory."""
         ...
@@ -52,8 +53,9 @@ class ModelRegistry:
     Registry for managing multiple local model providers.
     Independently instantiable for testing/mocking.
     """
+
     def __init__(self) -> None:
-        self._providers: Dict[str, LocalModelProvider] = {}
+        self._providers: dict[str, LocalModelProvider] = {}
 
     def register(self, model_key: str, provider: LocalModelProvider) -> None:
         """Register a model provider."""
@@ -85,9 +87,10 @@ class GpuScheduler:
     """
     Singleton GPU scheduler for VRAM management and model coordination.
     """
-    _instance: Optional[GpuScheduler] = None
 
-    def __init__(self, registry: Optional[ModelRegistry] = None) -> None:
+    _instance: GpuScheduler | None = None
+
+    def __init__(self, registry: ModelRegistry | None = None) -> None:
         self.registry = registry or ModelRegistry()
         self._vram_lock = asyncio.Lock()
 
@@ -119,9 +122,7 @@ class GpuScheduler:
             cmd = "nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits"
             # Use asyncio for command execution to remain fully async
             process = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await process.communicate()
             if process.returncode == 0:
@@ -138,17 +139,19 @@ class GpuScheduler:
         Unloads other models if necessary.
         """
         await self.registry.unload_all_except(model_key)
-        
+
         if torch and torch.cuda.is_available():
             # torch.cuda.empty_cache() is synchronous, but we can't do much about it
             torch.cuda.empty_cache()
-            
+
         free_mb = await self.free_vram_mb()
         if free_mb >= required_vram_mb:
             await self.registry.load(model_key)
             return True
-        
-        logger.warning(f"Insufficient VRAM for {model_key}: {free_mb:.1f}MB < {required_vram_mb:.1f}MB")
+
+        logger.warning(
+            f"Insufficient VRAM for {model_key}: {free_mb:.1f}MB < {required_vram_mb:.1f}MB"
+        )
         return False
 
     @asynccontextmanager

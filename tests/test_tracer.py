@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from obase.observability.tracer import Span, Tracer, _default_tracer, get_tracer
+from obase.observability.tracer import Span, Tracer, get_tracer
 
 
 class TestGetTracer:
