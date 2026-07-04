@@ -11,6 +11,7 @@ from obase.docker import (
     ContainerExecResult,
     ContainerInfo,
     ContainerOpResult,
+    ContainerRemoveResult,
     ContainerStats,
     ImagePullResult,
     LogLine,
@@ -26,6 +27,7 @@ from obase.docker import (
     docker_container_inspect,
     docker_container_list,
     docker_container_logs,
+    docker_container_remove,
     docker_container_rename,
     docker_container_restart,
     docker_container_start,
@@ -176,6 +178,61 @@ class TestContainerLifecycle:
         with patch(PATCH_CLIENT, return_value=_mock_client(c)):
             with pytest.raises(OBaseConnectionError):
                 docker_container_start(container_id="abc123")
+
+
+# ---------------------------------------------------------------------------
+# docker_container_remove
+# ---------------------------------------------------------------------------
+
+
+class TestContainerRemove:
+    def test_remove_returns_result(self):
+        c = _make_container("exited")
+        with patch(PATCH_CLIENT, return_value=_mock_client(c)):
+            result = docker_container_remove(container_id="abc123")
+        assert isinstance(result, ContainerRemoveResult)
+        assert result.removed is True
+        assert result.container_id == "abc123"
+        assert result.force is False
+        assert result.volumes_removed is False
+        c.remove.assert_called_once_with(force=False, v=False)
+
+    def test_remove_force_and_volumes_passthrough(self):
+        c = _make_container("running")
+        with patch(PATCH_CLIENT, return_value=_mock_client(c)):
+            result = docker_container_remove(container_id="abc123", force=True, remove_volumes=True)
+        assert result.force is True
+        assert result.volumes_removed is True
+        c.remove.assert_called_once_with(force=True, v=True)
+
+    def test_remove_running_without_force_raises_validation(self):
+        import docker.errors
+
+        c = _make_container("running")
+        c.remove.side_effect = docker.errors.APIError(
+            "cannot remove a running container; stop it first or force remove"
+        )
+        with patch(PATCH_CLIENT, return_value=_mock_client(c)):
+            with pytest.raises(OBaseValidationError):
+                docker_container_remove(container_id="abc123")
+
+    def test_remove_not_found_raises(self):
+        import docker.errors
+
+        client = MagicMock()
+        client.containers.get.side_effect = docker.errors.NotFound("nope")
+        with patch(PATCH_CLIENT, return_value=client):
+            with pytest.raises(OBaseNotFoundError):
+                docker_container_remove(container_id="missing")
+
+    def test_remove_docker_exc_becomes_connection_error(self):
+        import docker.errors
+
+        c = _make_container("exited")
+        c.remove.side_effect = docker.errors.DockerException("daemon down")
+        with patch(PATCH_CLIENT, return_value=_mock_client(c)):
+            with pytest.raises(OBaseConnectionError):
+                docker_container_remove(container_id="abc123")
 
 
 # ---------------------------------------------------------------------------
