@@ -13,6 +13,7 @@ from obase.docker.client import (
     ContainerExecResult,
     ContainerInfo,
     ContainerOpResult,
+    ContainerRemoveResult,
     ContainerRenameResult,
     ContainerStats,
     LogLine,
@@ -183,6 +184,48 @@ def docker_container_restart(
         elapsed_ms=elapsed,
         state_before=state_before,
         state_after=container.status,
+    )
+
+
+def docker_container_remove(
+    *,
+    container_id: str,
+    force: bool = False,
+    remove_volumes: bool = False,
+    docker_host: str = "unix:///var/run/docker.sock",
+) -> ContainerRemoveResult:
+    """删除容器 (docker rm).
+
+    force=True 强删运行中容器 (等价 docker rm -f);否则删运行中容器会因冲突报错,
+    提示改用 force. remove_volumes=True 一并删除容器关联的匿名卷 (docker rm -v).
+
+    Raises:
+        OBaseValidationError: 容器运行中且未 force.
+        OBaseNotFoundError: 容器不存在.
+        OBaseConnectionError: docker daemon 通信失败.
+    """
+    client = _make_client(docker_host)
+    container = _get_container(client, container_id)
+    cid = container.id
+
+    try:
+        container.remove(force=force, v=remove_volumes)
+    except docker.errors.APIError as exc:
+        msg = str(exc)
+        low = msg.lower()
+        if "running" in low or "cannot remove" in low or "conflict" in low:
+            raise OBaseValidationError(
+                f"Container is running; pass force=True to remove: {msg[:300]}"
+            ) from exc
+        raise OBaseConnectionError(f"Docker API error removing container: {msg[:300]}") from exc
+    except docker.errors.DockerException as exc:
+        raise OBaseConnectionError(f"Docker error removing container: {exc}") from exc
+
+    return ContainerRemoveResult(
+        container_id=cid,
+        removed=True,
+        force=force,
+        volumes_removed=remove_volumes,
     )
 
 
@@ -415,6 +458,7 @@ __all__ = [
     "docker_container_start",
     "docker_container_stop",
     "docker_container_restart",
+    "docker_container_remove",
     "docker_container_stats",
     "docker_container_list",
     "docker_container_create",

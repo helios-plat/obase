@@ -76,6 +76,13 @@ class ContainerCreateResult(BaseModel):
     warnings: list[str]
 
 
+class ContainerRemoveResult(BaseModel):
+    container_id: str
+    removed: bool
+    force: bool
+    volumes_removed: bool
+
+
 class PruneResult(BaseModel):
     containers_removed: int
     images_removed: int
