@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.16.0"
+__version__ = "0.16.1"
 
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
