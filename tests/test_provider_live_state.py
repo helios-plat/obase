@@ -12,7 +12,6 @@ from obase.provider_live_state import (
     fal_balance_probe,
 )
 
-
 # ── Rolling403Rate ──────────────────────────────────────────────────────────
 
 
@@ -83,8 +82,6 @@ def test_probe_403_rate_proxy():
 
 
 def test_probe_api_path(monkeypatch):
-    import obase.provider_live_state as mod
-
     class _Resp:
         def raise_for_status(self): ...
         def json(self):
