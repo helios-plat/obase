@@ -4,6 +4,15 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.17.0] — 2026-07-04
+
+### Added (C5 — provider 健康/余额活状态)
+- feat(C5): `obase/provider_live_state.py` —— `ProviderContract`(E1)是静态成本,L0 路由从"盲的静态表"升级为"交易所"还需**动态**余额/健康(fal/DashScope 双欠费 403 是此盲区的账单)。新增:
+  - `ProviderLiveState`:读写 `{name: {balance_usd, health, updated_at}}`,`healthy(name, min_balance_usd, min_health)` 供路由/熔断;无记录 → True(不误杀未探到的 provider)。
+  - `Rolling403Rate`:滚动窗口 403 率 → 健康代理(`health = 1 - rate`),fal 无余额 API 时用。
+  - `fal_balance_probe(*, config) -> {balance_usd, ok, source}`:优先查配置的余额端点,查不到降级 403 率代理,都无 → `source="unknown"`/`ok=True`。
+- **告警归 Aegis**(消费 `ProviderLiveState`),不在本模块。纯新增,现有 obase API 零变化。10 tests。下游 hevi L0 成本感知路由依赖(obase#4)。
+
 ## [0.12.0] — 2026-06-12
 
 ### Added (batch-0: async CRUD + docker + cache + extras)
