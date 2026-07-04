@@ -1,8 +1,9 @@
+import base64
 
 import pytest
 
 from obase.exceptions import ObaseSecretsError
-from obase.secrets import get_secret, register_backend, set_secret
+from obase.secrets import get_secret, load_master_key, register_backend, set_secret
 from obase.secrets.backends.env_file import EnvFileBackend
 
 
@@ -65,3 +66,59 @@ def test_env_file_backend_not_found():
     register_backend(backend)
     with pytest.raises(ObaseSecretsError, match="Secret 'X' not found"):
         get_secret("X")
+
+
+# ---------------------------------------------------------------------------
+# load_master_key (#17, D2-min: env:// + file://)
+# ---------------------------------------------------------------------------
+
+_KEY = b"x" * 32
+
+
+def test_load_master_key_env_base64(monkeypatch):
+    monkeypatch.setenv("MK", base64.b64encode(_KEY).decode())
+    assert load_master_key(source="env://MK") == _KEY
+
+
+def test_load_master_key_env_hex(monkeypatch):
+    monkeypatch.setenv("MK", _KEY.hex())
+    assert load_master_key(source="env://MK") == _KEY
+
+
+def test_load_master_key_env_missing(monkeypatch):
+    monkeypatch.delenv("MK_ABSENT", raising=False)
+    with pytest.raises(ObaseSecretsError, match="is not set"):
+        load_master_key(source="env://MK_ABSENT")
+
+
+def test_load_master_key_file_raw(tmp_path):
+    p = tmp_path / "mk.bin"
+    p.write_bytes(_KEY)
+    assert load_master_key(source=f"file://{p}") == _KEY
+
+
+def test_load_master_key_file_base64(tmp_path):
+    p = tmp_path / "mk.b64"
+    p.write_text(base64.b64encode(_KEY).decode() + "\n")
+    assert load_master_key(source=f"file://{p}") == _KEY
+
+
+def test_load_master_key_file_not_found(tmp_path):
+    with pytest.raises(ObaseSecretsError, match="not found"):
+        load_master_key(source=f"file://{tmp_path / 'nope'}")
+
+
+def test_load_master_key_wrong_length_rejected(monkeypatch):
+    monkeypatch.setenv("MK", base64.b64encode(b"short").decode())
+    with pytest.raises(ObaseSecretsError, match="32 bytes"):
+        load_master_key(source="env://MK")
+
+
+def test_load_master_key_non_uri_rejected():
+    with pytest.raises(ObaseSecretsError, match="must be a URI"):
+        load_master_key(source="justastring")
+
+
+def test_load_master_key_unsupported_scheme():
+    with pytest.raises(ObaseSecretsError, match="unsupported"):
+        load_master_key(source="age:///path/to/key")
