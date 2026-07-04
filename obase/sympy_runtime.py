@@ -12,10 +12,11 @@ from __future__ import annotations
 import ast
 import multiprocessing as mp
 import queue as _queue
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 
 class SymPyRuntimeError(Exception):
@@ -96,8 +97,7 @@ class _SafeVisitor(ast.NodeVisitor):
         self._depth += 1
         if self._depth > self._config.max_expression_depth:
             raise SymPyRestrictedError(
-                f"Expression depth {self._depth} exceeds limit "
-                f"{self._config.max_expression_depth}"
+                f"Expression depth {self._depth} exceeds limit {self._config.max_expression_depth}"
             )
         try:
             return super().visit(node)
@@ -109,8 +109,7 @@ class _SafeVisitor(ast.NodeVisitor):
             mod = alias.name.split(".")[0]
             if mod not in self._config.allowed_modules:
                 raise SymPyRestrictedError(
-                    f"Import of '{mod}' is not allowed. "
-                    f"Allowed: {self._config.allowed_modules}"
+                    f"Import of '{mod}' is not allowed. Allowed: {self._config.allowed_modules}"
                 )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -136,29 +135,21 @@ class _SafeVisitor(ast.NodeVisitor):
             "setattr",
             "delattr",
         ):
-            raise SymPyRestrictedError(
-                f"Call to '{node.func.id}' is not allowed in sandbox"
-            )
+            raise SymPyRestrictedError(f"Call to '{node.func.id}' is not allowed in sandbox")
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id in self._config.forbidden_names:
-            raise SymPyRestrictedError(
-                f"Name '{node.id}' is forbidden in sandbox"
-            )
+            raise SymPyRestrictedError(f"Name '{node.id}' is forbidden in sandbox")
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if node.attr.startswith("_"):
-            raise SymPyRestrictedError(
-                f"Private attribute access '{node.attr}' is forbidden"
-            )
+            raise SymPyRestrictedError(f"Private attribute access '{node.attr}' is forbidden")
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        raise SymPyRestrictedError(
-            "Function definitions are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("Function definitions are not allowed in sandbox expressions")
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         raise SymPyRestrictedError(
@@ -166,29 +157,19 @@ class _SafeVisitor(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        raise SymPyRestrictedError(
-            "Class definitions are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("Class definitions are not allowed in sandbox expressions")
 
     def visit_For(self, node: ast.For) -> None:
-        raise SymPyRestrictedError(
-            "For loops are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("For loops are not allowed in sandbox expressions")
 
     def visit_While(self, node: ast.While) -> None:
-        raise SymPyRestrictedError(
-            "While loops are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("While loops are not allowed in sandbox expressions")
 
     def visit_With(self, node: ast.With) -> None:
-        raise SymPyRestrictedError(
-            "With statements are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("With statements are not allowed in sandbox expressions")
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        raise SymPyRestrictedError(
-            "Lambda expressions are not allowed in sandbox expressions"
-        )
+        raise SymPyRestrictedError("Lambda expressions are not allowed in sandbox expressions")
 
 
 class SymPyRuntime:
@@ -221,15 +202,14 @@ class SymPyRuntime:
             except ImportError:
                 raise SymPyRuntimeError(
                     "sympy is not installed. Install with: pip install sympy"
-                )
+                ) from None
         return self._sympy
 
     def _validate_ast(self, code: str) -> ast.Expression:
         """Parse and validate the expression AST."""
         if len(code) > self._config.max_string_length:
             raise SymPyRestrictedError(
-                f"Expression length {len(code)} exceeds limit "
-                f"{self._config.max_string_length}"
+                f"Expression length {len(code)} exceeds limit {self._config.max_string_length}"
             )
         # Parse in exec mode first to catch statement-level forbidden constructs
         # (import, for, def, class, etc.) which are syntax errors in eval mode.
@@ -345,9 +325,7 @@ class SymPyRuntime:
                     ns[name] = val
         return ns
 
-    def _run_with_timeout(
-        self, func: Callable[[], Any], timeout: float | None = None
-    ) -> Any:
+    def _run_with_timeout(self, func: Callable[[], Any], timeout: float | None = None) -> Any:
         """Execute ``func`` under a hard, OS-enforced timeout.
 
         The computation runs in a forked child process so that even CPU-bound
@@ -365,9 +343,7 @@ class SymPyRuntime:
         """
         import time as _time
 
-        effective = (
-            timeout if timeout is not None else self._config.timeout_seconds
-        )
+        effective = timeout if timeout is not None else self._config.timeout_seconds
 
         try:
             ctx = mp.get_context("fork")
@@ -383,9 +359,7 @@ class SymPyRuntime:
                 try:
                     result_q.put(("err", exc))
                 except Exception:
-                    result_q.put(
-                        ("err", SymPyRuntimeError(f"{type(exc).__name__}: {exc}"))
-                    )
+                    result_q.put(("err", SymPyRuntimeError(f"{type(exc).__name__}: {exc}")))
 
         proc = ctx.Process(target=_worker, daemon=True)
         proc.start()
@@ -416,9 +390,7 @@ class SymPyRuntime:
                     f"Execution exceeded timeout of {effective}s (process killed)"
                 )
             proc.join()
-            raise SymPyRuntimeError(
-                "SymPy computation subprocess terminated without a result"
-            )
+            raise SymPyRuntimeError("SymPy computation subprocess terminated without a result")
 
         proc.join(1.0)
         if proc.is_alive():
@@ -443,9 +415,7 @@ class SymPyRuntime:
             return func()
 
         def _handler(signum: int, frame: Any) -> None:
-            raise SymPyTimeoutError(
-                f"Execution exceeded timeout of {effective}s"
-            )
+            raise SymPyTimeoutError(f"Execution exceeded timeout of {effective}s")
 
         old_handler = _signal.signal(_signal.SIGALRM, _handler)
         _signal.setitimer(_signal.ITIMER_REAL, effective)
@@ -742,7 +712,8 @@ class SymPyRuntime:
 
             # Auto-create symbols for common single-letter names
             import re
-            for name in set(re.findall(r'\b([a-zA-Z])\b', expression)):
+
+            for name in set(re.findall(r"\b([a-zA-Z])\b", expression)):
                 if name not in ns and len(name) == 1:
                     ns[name] = sp.Symbol(name)
 
@@ -802,7 +773,8 @@ class SymPyRuntime:
 
             # Auto-create symbols for common single-letter names
             import re
-            for name in set(re.findall(r'\b([a-zA-Z])\b', expression)):
+
+            for name in set(re.findall(r"\b([a-zA-Z])\b", expression)):
                 if name not in ns and len(name) == 1:
                     ns[name] = sp.Symbol(name)
 
@@ -891,9 +863,7 @@ def integrate(
     timeout: float | None = None,
 ) -> EvalResult:
     """Convenience function using the default runtime."""
-    return get_runtime().integrate_expr(
-        expression, variable, lower, upper, timeout=timeout
-    )
+    return get_runtime().integrate_expr(expression, variable, lower, upper, timeout=timeout)
 
 
 def simplify(

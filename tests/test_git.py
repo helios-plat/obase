@@ -1,6 +1,9 @@
-import pytest, asyncio
 from pathlib import Path
-from obase.git import run_git, GitResult
+
+import pytest
+
+from obase.git import run_git
+
 
 @pytest.mark.asyncio
 async def test_run_git_ok(tmp_path):

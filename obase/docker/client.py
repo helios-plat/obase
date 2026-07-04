@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from obase.exceptions import OBaseConnectionError, OBaseNotFoundError
 
-
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------

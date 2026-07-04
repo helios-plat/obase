@@ -3,25 +3,23 @@
 from __future__ import annotations
 
 import time
+from dataclasses import FrozenInstanceError
 
 import pytest
 
 from obase.sympy_runtime import (
     EvalResult,
     RuntimeConfig,
-    SymPyEvalError,
-    SymPyMemoryError,
     SymPyRestrictedError,
     SymPyRuntime,
-    SymPyRuntimeError,
     SymPyTimeoutError,
     diff,
     evaluate,
     get_runtime,
     integrate,
     latex,
-    solve,
     simplify,
+    solve,
 )
 
 
@@ -42,7 +40,7 @@ class TestRuntimeConfig:
 
     def test_config_is_frozen(self) -> None:
         cfg = RuntimeConfig()
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             cfg.timeout_seconds = 1.0  # type: ignore[misc]
 
 
@@ -179,6 +177,7 @@ class TestDifferentiate:
         result = rt.differentiate("x**3", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 3 * x**2
 
@@ -187,6 +186,7 @@ class TestDifferentiate:
         result = rt.differentiate("sin(x)", "x")
         assert result.success is True
         from sympy import Symbol, cos
+
         x = Symbol("x")
         assert result.value == cos(x)
 
@@ -195,6 +195,7 @@ class TestDifferentiate:
         result = rt.differentiate("x**4", "x", order=2)
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 12 * x**2
 
@@ -213,6 +214,7 @@ class TestIntegrate:
         result = rt.integrate_expr("x**2", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == x**3 / 3
 
@@ -221,6 +223,7 @@ class TestIntegrate:
         result = rt.integrate_expr("x**2", "x", 0, 1)
         assert result.success is True
         from sympy import Rational
+
         assert result.value == Rational(1, 3)
 
     def test_integrate_trig(self) -> None:
@@ -228,6 +231,7 @@ class TestIntegrate:
         result = rt.integrate_expr("sin(x)", "x")
         assert result.success is True
         from sympy import Symbol, cos
+
         x = Symbol("x")
         assert result.value == -cos(x)
 
@@ -281,6 +285,7 @@ class TestConvenienceFunctions:
         result = diff("x**2", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == 2 * x
 
@@ -288,6 +293,7 @@ class TestConvenienceFunctions:
         result = integrate("x", "x")
         assert result.success is True
         from sympy import Symbol
+
         x = Symbol("x")
         assert result.value == x**2 / 2
 
@@ -386,9 +392,7 @@ class TestEvalResult:
         assert result.value == 42
 
     def test_eval_result_failure(self) -> None:
-        result = EvalResult(
-            value=None, expr_str="bad", result_str="", success=False, error="fail"
-        )
+        result = EvalResult(value=None, expr_str="bad", result_str="", success=False, error="fail")
         assert result.success is False
         assert result.error == "fail"
 

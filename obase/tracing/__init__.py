@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from typing import Any, AsyncGenerator, Generator
+from typing import Any
 
 # ContextVar: isolated per asyncio Task — does NOT leak across concurrent tasks
 _current_trace_id: ContextVar[str | None] = ContextVar("trace_id", default=None)

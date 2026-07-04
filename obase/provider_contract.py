@@ -9,7 +9,7 @@ from typing import Literal
 
 from obase._types import OBaseModel
 from obase.cost_tracker import PricingEntry, PricingTable
-from obase.exceptions import PricingNotConfiguredError, ProviderNotFoundError
+from obase.exceptions import ProviderNotFoundError
 
 
 class ProviderContract(OBaseModel):

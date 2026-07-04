@@ -5,12 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from obase.provider_registry import ProviderRegistry
-
 
 # ---------------------------------------------------------------------------
 # helpers

@@ -3,11 +3,11 @@
 Connection failures always raise — messages are never silently dropped.
 Consumers use manual ack: handler failure leaves the message un-acked.
 """
+
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from typing import Any
 
 
@@ -50,7 +50,9 @@ class MQPublisher:
         except (MQConnectionError, ImportError):
             raise
         except Exception as exc:
-            raise MQConnectionError(f"MQPublisher: failed to connect to {self._url!r}: {exc}") from exc
+            raise MQConnectionError(
+                f"MQPublisher: failed to connect to {self._url!r}: {exc}"
+            ) from exc
 
     async def publish(self, body: bytes, *, routing_key: str | None = None) -> None:
         """Publish *body* to the broker.
@@ -69,7 +71,9 @@ class MQPublisher:
 
             rk = routing_key if routing_key is not None else self._default_rk
             msg = aio_pika.Message(body=body)
-            target = self._exchange if self._exchange is not None else self._channel.default_exchange
+            target = (
+                self._exchange if self._exchange is not None else self._channel.default_exchange
+            )
             await target.publish(msg, routing_key=rk)
         except (MQConnectionError, ImportError):
             raise
@@ -84,7 +88,7 @@ class MQPublisher:
             except Exception:
                 pass
 
-    async def __aenter__(self) -> "MQPublisher":
+    async def __aenter__(self) -> MQPublisher:
         await self.connect()
         return self
 
@@ -123,7 +127,9 @@ class MQConsumer:
         except (MQConnectionError, ImportError):
             raise
         except Exception as exc:
-            raise MQConnectionError(f"MQConsumer: failed to connect to {self._url!r}: {exc}") from exc
+            raise MQConnectionError(
+                f"MQConsumer: failed to connect to {self._url!r}: {exc}"
+            ) from exc
 
     async def consume(
         self,
@@ -169,7 +175,7 @@ class MQConsumer:
             except Exception:
                 pass
 
-    async def __aenter__(self) -> "MQConsumer":
+    async def __aenter__(self) -> MQConsumer:
         await self.connect()
         return self
 

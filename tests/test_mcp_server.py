@@ -18,14 +18,11 @@ import socket
 
 import anyio
 import pytest
-
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_client_server_memory_streams
-from mcp.types import TextContent
 
 from obase.mcp_server import MCPServer, MCPServerError, SkillDef
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -353,7 +350,6 @@ def test_snake_camel_serialization():
 
 def test_register_skill_wraps_add_tool_error(monkeypatch):
     """register_skill wraps add_tool failures in MCPServerError."""
-    from obase.mcp_server import MCPServerError
 
     server = _make_server()
 

@@ -1,10 +1,14 @@
 """health_check — Service health check utilities."""
+
 from __future__ import annotations
+
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+
 
 class HealthCheckError(Exception):
     """Base error for health_check."""
+
 
 class HealthChecker:
     """Run health checks against registered probes.
@@ -15,6 +19,7 @@ class HealthChecker:
         >>> hc.run_all()
         {'db': {'healthy': True, ...}}
     """
+
     def __init__(self) -> None:
         self._probes: dict[str, Callable[[], bool]] = {}
 
@@ -27,7 +32,14 @@ class HealthChecker:
             start = time.time()
             try:
                 ok = probe()
-                results[name] = {"healthy": ok, "latency_ms": round((time.time() - start) * 1000, 2)}
+                results[name] = {
+                    "healthy": ok,
+                    "latency_ms": round((time.time() - start) * 1000, 2),
+                }
             except Exception as e:
-                results[name] = {"healthy": False, "error": str(e), "latency_ms": round((time.time() - start) * 1000, 2)}
+                results[name] = {
+                    "healthy": False,
+                    "error": str(e),
+                    "latency_ms": round((time.time() - start) * 1000, 2),
+                }
         return results

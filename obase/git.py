@@ -1,5 +1,7 @@
 """obase.git — git subprocess 底座."""
+
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,19 +33,18 @@ async def run_git(args: list[str], *, cwd: Path, timeout: float = 30) -> GitResu
         raise FileNotFoundError(f"cwd does not exist: {cwd}")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "git", *args,
+            "git",
+            *args,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return GitResult(
             stdout=stdout.decode("utf-8", errors="replace"),
             stderr=stderr.decode("utf-8", errors="replace"),
             returncode=proc.returncode or 0,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
-        raise TimeoutError(f"git {args[0]!r} timed out after {timeout}s")
+        raise TimeoutError(f"git {args[0]!r} timed out after {timeout}s") from None

@@ -134,14 +134,15 @@ class CostTracker:
 # StepUsage / CostBreakdown — 多步聚合所需共享类型
 # ---------------------------------------------------------------------------
 
-from dataclasses import dataclass, field
-from decimal import Decimal
+from dataclasses import dataclass, field  # noqa: E402
+from decimal import Decimal  # noqa: E402
 
 
 @dataclass
 class StepUsage:
     """单步骤用量描述。"""
-    step: str        # "llm" / "video" / "audio" / "avatar"
+
+    step: str  # "llm" / "video" / "audio" / "avatar"
     provider: str
     usage: float
     unit: str
@@ -152,6 +153,7 @@ class StepUsage:
 @dataclass
 class CostBreakdown:
     """多步骤成本分解。"""
+
     per_step: dict[str, Decimal] = field(default_factory=dict)
     total: Decimal = Decimal("0")
     currency: str = "USD"
@@ -160,6 +162,7 @@ class CostBreakdown:
 # ---------------------------------------------------------------------------
 # PricingTable 扩展：动态 register_pricing
 # ---------------------------------------------------------------------------
+
 
 def _pricing_table_register(
     self,
@@ -186,11 +189,17 @@ def _pricing_table_register(
     )
     # 覆盖已有同 key 条目
     self.entries = [
-        e for e in self.entries
-        if not (e.category == category and e.provider == provider
-                and e.model_or_tier == (tier or "default") and e.unit == unit)
+        e
+        for e in self.entries
+        if not (
+            e.category == category
+            and e.provider == provider
+            and e.model_or_tier == (tier or "default")
+            and e.unit == unit
+        )
     ]
     self.entries.append(entry)
+
 
 PricingTable.register_pricing = _pricing_table_register
 
@@ -198,6 +207,7 @@ PricingTable.register_pricing = _pricing_table_register
 # ---------------------------------------------------------------------------
 # CostTracker 扩展：estimate / estimate_steps / reference 字段
 # ---------------------------------------------------------------------------
+
 
 def _tracker_estimate(
     self,
@@ -218,6 +228,7 @@ def _tracker_estimate(
         return Decimal("0")
     return Decimal(str(entry.price_usd * usage))
 
+
 def _tracker_estimate_steps(self, steps: list[StepUsage]) -> CostBreakdown:
     """多步聚合成本预估（不记录，纯计算）。
 
@@ -231,13 +242,16 @@ def _tracker_estimate_steps(self, steps: list[StepUsage]) -> CostBreakdown:
     total = Decimal("0")
     for s in steps:
         cost = _tracker_estimate(
-            self, s.provider,
-            usage=s.usage, unit=s.unit,
+            self,
+            s.provider,
+            usage=s.usage,
+            unit=s.unit,
             tier=s.tier,
         )
         per_step[s.step] = per_step.get(s.step, Decimal("0")) + cost
         total += cost
     return CostBreakdown(per_step=per_step, total=total)
+
 
 CostTracker.estimate = _tracker_estimate
 CostTracker.estimate_steps = _tracker_estimate_steps
@@ -246,6 +260,7 @@ CostTracker.estimate_steps = _tracker_estimate_steps
 # ---------------------------------------------------------------------------
 # C3 货币换算（通用，不含业务汇率）
 # ---------------------------------------------------------------------------
+
 
 def convert_currency(
     amount: Decimal,

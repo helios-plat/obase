@@ -1,9 +1,8 @@
 """Tests for obase.tracing ContextVar-based API."""
+
 from __future__ import annotations
 
 import asyncio
-
-import pytest
 
 from obase.tracing import current_trace_id, span, start_trace
 
@@ -16,7 +15,7 @@ class TestStartTrace:
             assert len(tid) == 16
 
     def test_trace_id_cleared_after_context(self):
-        with start_trace() as tid:
+        with start_trace():
             pass
         assert current_trace_id() is None
 
@@ -26,8 +25,8 @@ class TestStartTrace:
             assert current_trace_id() == "fixed-id-123"
 
     def test_nested_traces_restore_outer(self):
-        with start_trace("outer") as outer:
-            with start_trace("inner") as inner:
+        with start_trace("outer"):
+            with start_trace("inner"):
                 assert current_trace_id() == "inner"
             assert current_trace_id() == "outer"
 

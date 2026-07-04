@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -45,8 +46,8 @@ class TestJsonlRead:
 
     def test_malformed_raises_when_not_skipped(self, tmp_path: Path) -> None:
         p = tmp_path / "log.jsonl"
-        p.write_text('BAD\n')
-        with pytest.raises(Exception):
+        p.write_text("BAD\n")
+        with pytest.raises(json.JSONDecodeError):
             jsonl_read(path=p, skip_malformed=False)
 
     def test_file_not_found_raises(self, tmp_path: Path) -> None:
