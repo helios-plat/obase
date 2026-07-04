@@ -5,25 +5,30 @@ obase/cognitive_store.py
 """
 
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Protocol, runtime_checkable, Dict, List, Optional
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, insert
 
-from obase.cognitive_types import KCState, new_state_from_prior, fsrs_new_card
+from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
+from uuid import UUID
+
+from services.models import InteractionEvent, KCMastery
+from sqlalchemy import insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from obase.cognitive_types import KCState, fsrs_new_card, new_state_from_prior
 from obase.prior_provider import PriorProvider
-from services.models import KCMastery, InteractionEvent
+
 
 @runtime_checkable
 class BaseCognitiveStore(Protocol):
     """认知状态存储协议。"""
-    
-    async def get_or_create(self, student_id: UUID, kc_id: str, question_type: str = "solve") -> tuple[KCState, dict]:
+
+    async def get_or_create(
+        self, student_id: UUID, kc_id: str, question_type: str = "solve"
+    ) -> tuple[KCState, dict]:
         """获取或创建认知状态和 FSRS 卡片。"""
         ...
 
-    async def get_all_states(self, student_id: UUID) -> Dict[str, tuple[KCState, dict]]:
+    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
         """获取学生所有知识点的认知状态。"""
         ...
 
@@ -35,17 +40,21 @@ class BaseCognitiveStore(Protocol):
         """追加交互事件（只增不改）。"""
         ...
 
+
 class InMemoryStore:
     """内存版状态存储（用于测试）。"""
+
     def __init__(self):
-        self._states: Dict[str, KCState] = {}
-        self._cards: Dict[str, dict] = {}
-        self._events: List[dict] = []
+        self._states: dict[str, KCState] = {}
+        self._cards: dict[str, dict] = {}
+        self._events: list[dict] = []
 
     def _key(self, student_id: UUID, kc_id: str) -> str:
         return f"{student_id}::{kc_id}"
 
-    async def get_or_create(self, student_id: UUID, kc_id: str, question_type: str = "solve") -> tuple[KCState, dict]:
+    async def get_or_create(
+        self, student_id: UUID, kc_id: str, question_type: str = "solve"
+    ) -> tuple[KCState, dict]:
         k = self._key(student_id, kc_id)
         if k not in self._states:
             # 优先使用 PriorProvider，如果它已经预热 (例如在测试中或应用启动时)
@@ -54,17 +63,19 @@ class InMemoryStore:
             else:
                 # 兼容性 Fallback
                 from data.guangdong_math_kc import get_bkt_prior
+
                 prior = get_bkt_prior(kc_id)
-            
+
             self._states[k] = new_state_from_prior(kc_id=kc_id, prior=prior)
             self._cards[k] = fsrs_new_card()
         return self._states[k], self._cards[k]
 
-    async def get_all_states(self, student_id: UUID) -> Dict[str, tuple[KCState, dict]]:
+    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
         prefix = f"{student_id}::"
         return {
-            k[len(prefix):]: (self._states[k], self._cards[k])
-            for k in self._states if k.startswith(prefix)
+            k[len(prefix) :]: (self._states[k], self._cards[k])
+            for k in self._states
+            if k.startswith(prefix)
         }
 
     async def save(self, student_id: UUID, kc_id: str, state: KCState, card_dict: dict) -> None:
@@ -77,18 +88,21 @@ class InMemoryStore:
         event["student_id"] = student_id
         event["knowledge_point"] = kc_id
         if "occurred_at" not in event:
-            event["occurred_at"] = datetime.now(timezone.utc)
+            event["occurred_at"] = datetime.now(UTC)
         self._events.append(event)
+
 
 class PgStore:
     """PostgreSQL 状态存储。"""
+
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_or_create(self, student_id: UUID, kc_id: str, question_type: str = "solve") -> tuple[KCState, dict]:
+    async def get_or_create(
+        self, student_id: UUID, kc_id: str, question_type: str = "solve"
+    ) -> tuple[KCState, dict]:
         stmt = select(KCMastery).where(
-            KCMastery.student_id == student_id,
-            KCMastery.knowledge_point == kc_id
+            KCMastery.student_id == student_id, KCMastery.knowledge_point == kc_id
         )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -101,7 +115,7 @@ class PgStore:
             card = fsrs_new_card()
             return state, card
 
-    async def get_all_states(self, student_id: UUID) -> Dict[str, tuple[KCState, dict]]:
+    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
         stmt = select(KCMastery).where(KCMastery.student_id == student_id)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
@@ -116,30 +130,37 @@ class PgStore:
             p_slip=row.p_slip,
             p_mastery=row.p_mastery,
             long_term_mastery=row.long_term_mastery,
-            last_interaction_ts=row.last_interaction_at.timestamp() if row.last_interaction_at else None,
+            last_interaction_ts=row.last_interaction_at.timestamp()
+            if row.last_interaction_at
+            else None,
             n_attempts=row.n_attempts or 0,
             p_recognition=row.p_recognition,
-            p_recognition_init=row.p_recognition_init or 0.20
+            p_recognition_init=row.p_recognition_init or 0.20,
         )
         card = row.fsrs_card_json or fsrs_new_card()
         return state, card
 
     async def save(self, student_id: UUID, kc_id: str, state: KCState, card_dict: dict) -> None:
-        last_interaction_at = datetime.fromtimestamp(state.last_interaction_ts, timezone.utc) if state.last_interaction_ts else datetime.now(timezone.utc)
-        stmt = update(KCMastery).where(
-            KCMastery.student_id == student_id,
-            KCMastery.knowledge_point == kc_id
-        ).values(
-            p_mastery=state.p_mastery,
-            long_term_mastery=state.long_term_mastery,
-            p_recognition=state.p_recognition,
-            fsrs_card_json=card_dict,
-            last_interaction_at=last_interaction_at,
-            n_attempts=state.n_attempts,
-            updated_at=datetime.now(timezone.utc)
+        last_interaction_at = (
+            datetime.fromtimestamp(state.last_interaction_ts, UTC)
+            if state.last_interaction_ts
+            else datetime.now(UTC)
+        )
+        stmt = (
+            update(KCMastery)
+            .where(KCMastery.student_id == student_id, KCMastery.knowledge_point == kc_id)
+            .values(
+                p_mastery=state.p_mastery,
+                long_term_mastery=state.long_term_mastery,
+                p_recognition=state.p_recognition,
+                fsrs_card_json=card_dict,
+                last_interaction_at=last_interaction_at,
+                n_attempts=state.n_attempts,
+                updated_at=datetime.now(UTC),
+            )
         )
         result = await self.session.execute(stmt)
-        
+
         if result.rowcount == 0:
             ins_stmt = insert(KCMastery).values(
                 student_id=student_id,
@@ -154,7 +175,7 @@ class PgStore:
                 p_recognition_init=state.p_recognition_init,
                 fsrs_card_json=card_dict,
                 last_interaction_at=last_interaction_at,
-                n_attempts=state.n_attempts
+                n_attempts=state.n_attempts,
             )
             await self.session.execute(ins_stmt)
 
@@ -171,6 +192,6 @@ class PgStore:
             is_interleaved=event_data.get("is_interleaved", False),
             item_difficulty=event_data.get("item_difficulty"),
             predicted_confidence=event_data.get("predicted_confidence"),
-            occurred_at=event_data.get("occurred_at", datetime.now(timezone.utc))
+            occurred_at=event_data.get("occurred_at", datetime.now(UTC)),
         )
         await self.session.execute(ins_stmt)

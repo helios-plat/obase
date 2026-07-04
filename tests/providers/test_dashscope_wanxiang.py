@@ -11,7 +11,6 @@ import pytest
 from obase.exceptions import ObaseSecretsError
 from obase.provider_registry import ProviderRegistry
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

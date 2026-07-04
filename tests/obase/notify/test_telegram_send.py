@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from obase.notify import TelegramRequest, TelegramResult, telegram_send
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,15 +43,15 @@ class TestTelegramRequest:
         assert req.disable_notification is False
 
     def test_empty_bot_token_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TelegramRequest(bot_token="", chat_id="123", text="hi")
 
     def test_empty_chat_id_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TelegramRequest(bot_token="tok", chat_id="", text="hi")
 
     def test_empty_text_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TelegramRequest(bot_token="tok", chat_id="123", text="")
 
     def test_custom_parse_mode(self):

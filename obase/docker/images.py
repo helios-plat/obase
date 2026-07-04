@@ -8,8 +8,8 @@ from typing import Any
 import docker  # type: ignore[import-untyped]
 import docker.errors  # type: ignore[import-untyped]
 
-from obase.exceptions import OBaseConnectionError, OBaseNotFoundError, ObaseAuthError
 from obase.docker.client import ImagePullResult, PruneResult, _make_client
+from obase.exceptions import ObaseAuthError, OBaseConnectionError, OBaseNotFoundError
 
 
 def docker_image_pull(

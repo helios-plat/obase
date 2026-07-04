@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from datetime import timezone
+from datetime import UTC
 
 import pytest
+from pydantic import ValidationError
 
 from obase.audit import AuditEntry, AuditWriter, format_audit_entry
 
@@ -72,27 +73,27 @@ class TestAuditEntry:
     def test_empty_actor_raises(self):
         from datetime import datetime
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AuditEntry(
                 id="01927f4e-0000-7000-8000-000000000001",
                 actor="",
                 action="x",
                 resource_type="y",
                 resource_id="z",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
             )
 
     def test_id_length_enforced(self):
         from datetime import datetime
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AuditEntry(
                 id="short",
                 actor="a",
                 action="b",
                 resource_type="c",
                 resource_id="d",
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
             )
 
 

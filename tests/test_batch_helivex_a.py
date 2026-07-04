@@ -4,13 +4,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from obase.canonical_json import canonical_json
 from obase.sha256_hash import sha256_hash
-
 
 # ─────────────────────────── canonical_json ────────────────────────────
 

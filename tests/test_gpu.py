@@ -1,7 +1,10 @@
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from obase.gpu import GpuScheduler, ModelRegistry, LocalModelProvider
+
+from obase.gpu import GpuScheduler, LocalModelProvider, ModelRegistry
+
 
 class MockModelProvider:
     def __init__(self, name: str):

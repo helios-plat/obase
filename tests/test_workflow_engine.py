@@ -153,7 +153,6 @@ class TestExecute:
 
     def test_parallel_layer_execution(self):
         """Nodes in same layer should run concurrently (measured by total time)."""
-        import time
 
         async def _run():
             nodes = ["A", "B", "C"]

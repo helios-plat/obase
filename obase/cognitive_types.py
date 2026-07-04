@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -33,11 +32,11 @@ class KCState:
     p_transit: float = 0.20
     p_guess: float = 0.15
     p_slip: float = 0.12
-    p_mastery: Optional[float] = None
-    p_recognition: Optional[float] = None       # 识别维度掌握概率（M-G）
+    p_mastery: float | None = None
+    p_recognition: float | None = None       # 识别维度掌握概率（M-G）
     p_recognition_init: float = 0.20             # 识别维度先验
-    long_term_mastery: Optional[float] = None
-    last_interaction_ts: Optional[float] = None
+    long_term_mastery: float | None = None
+    last_interaction_ts: float | None = None
     n_attempts: int = 0
 
     def current(self) -> float:

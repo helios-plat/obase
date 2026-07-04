@@ -4,15 +4,16 @@ BKT 先验参数提供者（带缓存）
 obase/prior_provider.py
 """
 
-from typing import Dict, Optional
+
+from services.models import BKTPrior
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.models import BKTPrior
+
 
 class PriorProvider:
     """提供 BKT 先验参数，支持内存缓存。"""
     
-    _cache: Dict[str, dict] = {}
+    _cache: dict[str, dict] = {}
     _is_warmed: bool = False
 
     @classmethod
@@ -36,7 +37,7 @@ class PriorProvider:
     @classmethod
     async def get_prior(
         cls, 
-        session: Optional[AsyncSession], 
+        session: AsyncSession | None, 
         kc_id: str, 
         question_type: str = "solve"
     ) -> dict:

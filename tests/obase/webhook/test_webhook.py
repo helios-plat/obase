@@ -32,7 +32,7 @@ class TestSignPayload:
             sign_payload(payload={"x": 1}, secret="short")
 
     def test_non_serializable_uses_default_str_no_raise(self):
-        dt = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+        dt = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         result = sign_payload(payload={"ts": dt}, secret=_SECRET_32)
         assert len(result) == 64
 
