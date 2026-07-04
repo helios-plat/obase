@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import FrozenInstanceError
+from importlib.util import find_spec
 
 import pytest
 
@@ -21,6 +22,9 @@ from obase.sympy_runtime import (
     simplify,
     solve,
 )
+
+_HAS_SYMPY = find_spec("sympy") is not None
+requires_sympy = pytest.mark.skipif(not _HAS_SYMPY, reason="sympy is not installed")
 
 
 class TestRuntimeConfig:
@@ -44,6 +48,7 @@ class TestRuntimeConfig:
             cfg.timeout_seconds = 1.0  # type: ignore[misc]
 
 
+@requires_sympy
 class TestSymPyRuntime:
     """Core runtime tests."""
 
@@ -147,6 +152,7 @@ class TestSandboxSecurity:
             rt.evaluate("a" * 100)
 
 
+@requires_sympy
 class TestSolveEquation:
     """Tests for equation solving."""
 
@@ -169,6 +175,7 @@ class TestSolveEquation:
         assert len(result.value) == 3
 
 
+@requires_sympy
 class TestDifferentiate:
     """Tests for differentiation."""
 
@@ -206,6 +213,7 @@ class TestDifferentiate:
         assert result.value == 0
 
 
+@requires_sympy
 class TestIntegrate:
     """Tests for integration."""
 
@@ -236,6 +244,7 @@ class TestIntegrate:
         assert result.value == -cos(x)
 
 
+@requires_sympy
 class TestSimplify:
     """Tests for simplification."""
 
@@ -252,6 +261,7 @@ class TestSimplify:
         assert result.value == 1
 
 
+@requires_sympy
 class TestToLatex:
     """Tests for LaTeX conversion."""
 
@@ -268,6 +278,7 @@ class TestToLatex:
         assert "\\frac" in result.result_str
 
 
+@requires_sympy
 class TestConvenienceFunctions:
     """Tests for module-level convenience functions."""
 
@@ -322,6 +333,7 @@ class TestGetRuntime:
         assert rt._config.timeout_seconds == 10.0
 
 
+@requires_sympy
 class TestTimeout:
     """Tests for timeout handling."""
 
@@ -332,6 +344,7 @@ class TestTimeout:
         assert result.success is True
 
 
+@requires_sympy
 class TestHardTimeout:
     """沙箱红线: pathological input MUST be killed within the deadline.
 
