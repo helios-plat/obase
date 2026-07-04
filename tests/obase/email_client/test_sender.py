@@ -14,6 +14,9 @@ from obase.email_client.sender import (
     send_upgrade_request_notification,
 )
 
+# The email sender integrates the optional `resend` SDK; skip its tests when absent.
+resend = pytest.importorskip("resend")
+
 
 @pytest.mark.asyncio
 @patch("obase.email_client.sender.resend")
