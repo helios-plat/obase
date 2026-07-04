@@ -1,6 +1,7 @@
 from typing import Protocol, runtime_checkable
 
 from obase.exceptions import ObaseSecretsError
+from obase.secrets.master_key import load_master_key
 
 
 @runtime_checkable
@@ -47,3 +48,12 @@ def set_secret(name: str, value: str) -> None:
         raise ObaseSecretsError(str(e)) from e
     except Exception as e:
         raise ObaseSecretsError(f"Failed to set secret {name!r}: {e}") from e
+
+
+__all__ = [
+    "SecretsBackend",
+    "register_backend",
+    "get_secret",
+    "set_secret",
+    "load_master_key",
+]
