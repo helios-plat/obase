@@ -3,8 +3,6 @@
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from obase.scheduler import IntradayPollScheduler
 
 

@@ -9,15 +9,14 @@ from unittest.mock import patch
 import pytest
 
 from obase.http.dns_pinned_transport import (
-    DNSPinnedHTTPSHandler,
-    SSRFBlockedError,
     _ALLOWED_DOCKER_NETWORKS,
     _BLOCKED_NETWORKS,
+    DNSPinnedHTTPSHandler,
+    SSRFBlockedError,
     is_safe_ip,
     make_ssrf_safe_opener,
     resolve_and_check,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

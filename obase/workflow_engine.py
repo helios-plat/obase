@@ -20,11 +20,13 @@ Example:
         on_error="rollback",
     )
 """
+
 from __future__ import annotations
 
 import asyncio
 from collections import defaultdict, deque
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class CycleError(Exception):
@@ -70,9 +72,7 @@ class WorkflowEngine:
                 dfs(n)
 
     @staticmethod
-    def topological_sort(
-        nodes: list[str], edges: list[tuple[str, str]]
-    ) -> list[list[str]]:
+    def topological_sort(nodes: list[str], edges: list[tuple[str, str]]) -> list[list[str]]:
         """Return nodes grouped into layers for parallel execution.
 
         Each layer contains nodes whose dependencies are all in earlier layers.
@@ -102,7 +102,7 @@ class WorkflowEngine:
                     if in_degree[nxt] == 0:
                         queue.append(nxt)
 
-        if sum(len(l) for l in layers) != len(nodes):
+        if sum(len(layer) for layer in layers) != len(nodes):
             raise CycleError("Graph has a cycle — not all nodes were processed")
 
         return layers
@@ -148,7 +148,7 @@ class WorkflowEngine:
             tasks = [asyncio.create_task(_run_node(n)) for n in layer]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for node, outcome in zip(layer, results):
+            for node, outcome in zip(layer, results, strict=True):
                 if isinstance(outcome, Exception):
                     if on_error == "rollback":
                         # Cancel remaining tasks

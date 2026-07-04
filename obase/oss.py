@@ -5,16 +5,18 @@ obase/oss.py
 """
 
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Optional
+
 from minio import Minio
+
 from obase.config import settings
 
 logger = logging.getLogger(__name__)
 
 # 全局客户端单例
-_client: Optional[Minio] = None
+_client: Minio | None = None
 
 def get_oss_client() -> Minio:
     """获取或初始化 Minio 客户端。"""

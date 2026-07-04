@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ class AuditEntry(BaseModel):
         id: UUIDv7 identifier — time-sortable, globally unique.
         actor: Who performed the action (user id, service name, ``"system"``).
         action: Verb describing the event (e.g. ``"create"``, ``"delete"``, ``"approve"``).
-        resource_type: Logical category of the affected resource (e.g. ``"trade"``, ``"alert_rule"``).
+        resource_type: Logical category of the resource (e.g. ``"trade"``, ``"alert_rule"``).
         resource_id: Unique identifier of the affected resource.
         detail: Optional key-value metadata (must be JSON-serialisable).
         timestamp: UTC datetime of the event.
@@ -89,5 +89,5 @@ def format_audit_entry(
         resource_type=resource_type,
         resource_id=resource_id,
         detail=detail or {},
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
     )

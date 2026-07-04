@@ -4,9 +4,10 @@
 """
 
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import UUID
-from typing import Any, List, Optional
+
 from obase.persistence import PgPool, insert_one, query
 from obase.uuid7 import uuid7
 
@@ -16,7 +17,7 @@ TABLE = "error_tags"
 
 async def ensure_error_tag_table(pool: PgPool):
     """初始化错误标签表。"""
-    from obase.persistence import ensure_table, ensure_index
+    from obase.persistence import ensure_index, ensure_table
     
     await ensure_table(
         pool=pool,
@@ -47,8 +48,8 @@ async def store_error_tag(
     question_id: str,
     kc_id: str,
     primary_tag: str,
-    secondary_tags: Optional[List[str]] = None,
-    reason: Optional[str] = None
+    secondary_tags: list[str] | None = None,
+    reason: str | None = None
 ) -> UUID:
     """存储一条错误标签记录。"""
     record_id = uuid7()
@@ -64,7 +65,7 @@ async def store_error_tag(
             "primary_tag": primary_tag,
             "secondary_tags": secondary_tags or [],
             "reason": reason,
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
     )
     return record_id
@@ -72,8 +73,8 @@ async def store_error_tag(
 async def get_error_distribution(
     pool: PgPool,
     student_id: UUID,
-    kc_id: Optional[str] = None
-) -> List[dict]:
+    kc_id: str | None = None
+) -> list[dict]:
     """获取错误类型分布。"""
     where = "student_id = $1"
     params = [student_id]

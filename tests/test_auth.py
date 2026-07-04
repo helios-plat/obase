@@ -61,7 +61,7 @@ def test_bcrypt_invalid_hash():
 def test_totp_roundtrip():
     secret = totp_secret_generate()
     assert len(secret) == 32
-    # This is a bit tricky to test without waiting, but we can use pyotp directly to get current code
+    # Tricky to test without waiting; use pyotp directly to get the current code
     import pyotp
 
     totp = pyotp.TOTP(secret)

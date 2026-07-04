@@ -4,10 +4,11 @@
 """
 
 from __future__ import annotations
-from datetime import datetime, timezone
-from uuid import UUID
-from typing import Any, List, Optional
+
 import json
+from datetime import UTC, datetime
+from uuid import UUID
+
 from obase.persistence import PgPool, insert_one, query
 from obase.uuid7 import uuid7
 
@@ -16,7 +17,7 @@ TABLE = "interaction_history"
 
 async def ensure_interaction_history_table(pool: PgPool):
     """初始化互动历史表。"""
-    from obase.persistence import ensure_table, ensure_index
+    from obase.persistence import ensure_index, ensure_table
     
     await ensure_table(
         pool=pool,
@@ -51,7 +52,7 @@ async def start_interaction_session(
     student_id: UUID,
     input_type: str,
     initial_input: str,
-    question_id: Optional[str] = None
+    question_id: str | None = None
 ) -> UUID:
     """开启一个新的互动会话。"""
     session_id = uuid7()
@@ -65,7 +66,7 @@ async def start_interaction_session(
             "question_id": question_id,
             "input_type": input_type,
             "initial_input": initial_input,
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(UTC)
         }
     )
     return session_id
@@ -73,10 +74,10 @@ async def start_interaction_session(
 async def update_interaction_session(
     pool: PgPool,
     session_id: UUID,
-    metacog_eval: Optional[dict] = None,
-    decision_trail: Optional[List[dict]] = None,
-    final_output: Optional[str] = None,
-    cost: Optional[float] = None,
+    metacog_eval: dict | None = None,
+    decision_trail: list[dict] | None = None,
+    final_output: str | None = None,
+    cost: float | None = None,
     is_completed: bool = False
 ) -> None:
     """更新会话状态。"""
@@ -92,7 +93,7 @@ async def update_interaction_session(
     if cost is not None:
         updates["cost"] = cost
     if is_completed:
-        updates["completed_at"] = datetime.now(timezone.utc)
+        updates["completed_at"] = datetime.now(UTC)
         
     if updates:
         await update_one(
@@ -108,7 +109,7 @@ async def get_student_history(
     student_id: UUID,
     limit: int = 20,
     offset: int = 0
-) -> List[dict]:
+) -> list[dict]:
     """获取学生的历史互动记录。"""
     sql = f"""
         SELECT * FROM "{SCHEMA}"."{TABLE}"
@@ -141,7 +142,7 @@ async def purge_expired_interactions(
         >>> count = await purge_expired_interactions(pool)
         >>> print(f"Deleted {count} expired records")
     """
-    from obase.persistence import query, execute
+    from obase.persistence import execute, query
     count_sql = f"""
         SELECT COUNT(*) FROM {SCHEMA}.{TABLE}
         WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL

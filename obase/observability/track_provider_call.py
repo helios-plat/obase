@@ -11,9 +11,9 @@ Example:
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
-
+from typing import Any
 
 # In-memory metrics store (per-process; replace with Prometheus in production)
 _metrics: dict[str, dict[str, Any]] = {}
