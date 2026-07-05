@@ -302,7 +302,12 @@ def docker_container_list(
             ContainerInfo(
                 container_id=c.id,
                 name=c.name,
-                image=c.image.tags[0] if c.image.tags else c.image.id,
+                # Resolve the image reference from the container's own (already-fetched)
+                # attrs rather than the lazy `.image` property — that property issues a
+                # separate `GET /images/{id}/json` call, which 404s (ImageNotFound) for a
+                # container whose image was since pruned/retagged, aborting this whole
+                # list comprehension for every other container in the process.
+                image=c.attrs.get("Config", {}).get("Image") or c.attrs.get("Image") or "",
                 state=_parse_state(c.attrs),
                 status=c.status,
                 started_at=c.attrs.get("State", {}).get("StartedAt"),

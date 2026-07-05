@@ -348,6 +348,37 @@ class TestDockerContainerList:
         assert len(result) == 1
         assert isinstance(result[0], ContainerInfo)
 
+    def test_survives_container_with_deleted_image(self):
+        """A container whose image was since pruned/retagged must not break the list.
+
+        Regression test: docker-py's `.image` property issues a *separate*
+        `GET /images/{id}/json` call, which 404s (ImageNotFound) if that image is
+        gone. The image reference must come from the container's own (already
+        fetched) attrs instead, so one broken container can't take down every
+        other container in the same list() call.
+        """
+        import docker.errors
+
+        class _DeletedImageContainer:
+            id = "deaddead"
+            name = "mneme-api-1"
+            status = "running"
+            attrs = {**_BASE_ATTRS, "Config": {"Image": "mneme-api:latest", "Labels": {}}}
+
+            @property
+            def image(self):
+                raise docker.errors.ImageNotFound("no such image")
+
+        ok = _make_container()
+        ok.image = MagicMock(tags=["nginx:latest"])
+        broken = _DeletedImageContainer()
+        client = MagicMock()
+        client.containers.list.return_value = [ok, broken]
+        with patch(PATCH_CLIENT, return_value=client):
+            result = docker_container_list()
+        assert len(result) == 2
+        assert result[1].image == "mneme-api:latest"
+
     def test_empty_list(self):
         client = MagicMock()
         client.containers.list.return_value = []
