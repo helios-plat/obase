@@ -24,6 +24,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,docker]"
+        run: pip install -e ".[dev,docker,cache]"
 
       - name: Lint
         run: ruff check obase tests
@@ -41,4 +50,5 @@ jobs:
       - name: Test
         env:
           TEST_PG_DSN: postgresql://postgres:test@localhost:5432/obase_test
+          TEST_REDIS_URL: redis://localhost:6379/0
         run: pytest --tb=short -q
