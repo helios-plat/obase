@@ -30,6 +30,8 @@ from obase.commerce_batch_schema import (
     ensure_inventory_batch_table,
     ensure_order_line_item_table,
     ensure_payment_session_table,
+    ensure_price_list_item_table,
+    ensure_price_list_table,
     ensure_product_category_table,
     ensure_product_collection_item_table,
     ensure_product_collection_table,
@@ -37,6 +39,8 @@ from obase.commerce_batch_schema import (
     ensure_product_table,
     ensure_product_variant_table,
     ensure_region_table,
+    ensure_sales_channel_product_table,
+    ensure_sales_channel_table,
     ensure_stock_location_table,
     ensure_tax_rate_table,
 )
@@ -58,6 +62,10 @@ _TABLES = [
     "product_category",
     "product_collection",
     "product_collection_item",
+    "price_list",
+    "price_list_item",
+    "sales_channel",
+    "sales_channel_product",
     "inventory_batch",
     "cart",
     "cart_line_item",
@@ -146,6 +154,8 @@ class TestEnsureCommerceBatchSchema:
             "idx_product_option_product",
             "idx_product_category_parent",
             "uq_collection_item_collection_product",
+            "uq_price_list_item_list_variant",
+            "uq_sales_channel_product_channel_product",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -462,6 +472,90 @@ class TestRegionAndTaxRateTables:
             )
         assert row["status"] == "active"
         assert row["payment_provider_names"] == []
+
+
+class TestPricingAndChannelTables:
+    async def test_price_list_item_fk_and_unique(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            price_list_id = await conn.fetchval(
+                'INSERT INTO "public"."price_list" (id, name, currency) '
+                "VALUES (gen_random_uuid(), 'Sale', 'CNY') RETURNING id"
+            )
+            prod_id = await conn.fetchval(
+                'INSERT INTO "public"."product" (id, title, slug) '
+                "VALUES (gen_random_uuid(), 'p', 'p-slug-price') RETURNING id"
+            )
+            variant_id = await conn.fetchval(
+                'INSERT INTO "public"."product_variant" (id, product_id, sku_code) '
+                "VALUES (gen_random_uuid(), $1, 'SKU-PRICE-1') RETURNING id",
+                prod_id,
+            )
+            await conn.execute(
+                'INSERT INTO "public"."price_list_item" '
+                "(id, price_list_id, variant_id, price_cents) "
+                "VALUES (gen_random_uuid(), $1, $2, 1000)",
+                price_list_id,
+                variant_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."price_list_item" '
+                    "(id, price_list_id, variant_id, price_cents) "
+                    "VALUES (gen_random_uuid(), $1, $2, 1200)",
+                    price_list_id,
+                    variant_id,
+                )
+
+    async def test_sales_channel_product_fk_and_unique(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            channel_id = await conn.fetchval(
+                'INSERT INTO "public"."sales_channel" (id, name) '
+                "VALUES (gen_random_uuid(), 'Storefront') RETURNING id"
+            )
+            prod_id = await conn.fetchval(
+                'INSERT INTO "public"."product" (id, title, slug) '
+                "VALUES (gen_random_uuid(), 'p', 'p-slug-channel') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."sales_channel_product" (id, channel_id, product_id) '
+                "VALUES (gen_random_uuid(), $1, $2)",
+                channel_id,
+                prod_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."sales_channel_product" (id, channel_id, product_id) '
+                    "VALUES (gen_random_uuid(), $1, $2)",
+                    channel_id,
+                    prod_id,
+                )
+
+    async def test_price_list_item_negative_price_rejected(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            price_list_id = await conn.fetchval(
+                'INSERT INTO "public"."price_list" (id, name, currency) '
+                "VALUES (gen_random_uuid(), 'Sale2', 'CNY') RETURNING id"
+            )
+            prod_id = await conn.fetchval(
+                'INSERT INTO "public"."product" (id, title, slug) '
+                "VALUES (gen_random_uuid(), 'p', 'p-slug-price2') RETURNING id"
+            )
+            variant_id = await conn.fetchval(
+                'INSERT INTO "public"."product_variant" (id, product_id, sku_code) '
+                "VALUES (gen_random_uuid(), $1, 'SKU-PRICE-2') RETURNING id",
+                prod_id,
+            )
+            with pytest.raises(Exception, match="(?i)check constraint|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."price_list_item" '
+                    "(id, price_list_id, variant_id, price_cents) "
+                    "VALUES (gen_random_uuid(), $1, $2, -100)",
+                    price_list_id,
+                    variant_id,
+                )
 
 
 class TestProductTaxonomyTables:
@@ -784,3 +878,18 @@ class TestIndividualTableCreators:
         assert await _table_exists(pg_pool, "product_category")
         assert await _table_exists(pg_pool, "product_collection")
         assert await _table_exists(pg_pool, "product_collection_item")
+
+    async def test_ensure_price_list_tables_in_order(self, pg_pool):
+        await ensure_price_list_table(pg_pool)
+        await ensure_product_table(pg_pool)
+        await ensure_product_variant_table(pg_pool)
+        await ensure_price_list_item_table(pg_pool)
+        assert await _table_exists(pg_pool, "price_list")
+        assert await _table_exists(pg_pool, "price_list_item")
+
+    async def test_ensure_sales_channel_tables_in_order(self, pg_pool):
+        await ensure_sales_channel_table(pg_pool)
+        await ensure_product_table(pg_pool)
+        await ensure_sales_channel_product_table(pg_pool)
+        assert await _table_exists(pg_pool, "sales_channel")
+        assert await _table_exists(pg_pool, "sales_channel_product")

@@ -721,6 +721,86 @@ async def ensure_customer_address_table(pool: PgPool) -> None:
     )
 
 
+async def ensure_price_list_table(pool: PgPool) -> None:
+    """价格表元数据(如"双十一大促价"),具体 SKU 特价在 price_list_item。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="price_list",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("currency", "TEXT NOT NULL"),
+            ("starts_at", "TIMESTAMPTZ"),
+            ("ends_at", "TIMESTAMPTZ"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_price_list_item_table(pool: PgPool) -> None:
+    """价格表下的 SKU 特价行。UNIQUE(price_list_id, variant_id)：同一价格表里
+    一个 SKU 只有一个价格(重复设置走更新，不产生重复行)。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="price_list_item",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("price_list_id", "UUID NOT NULL REFERENCES price_list(id)"),
+            ("variant_id", "UUID NOT NULL REFERENCES product_variant(id)"),
+            ("price_cents", "INTEGER NOT NULL CHECK (price_cents >= 0)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_price_list_item_list_variant" '
+            'ON "public"."price_list_item" (price_list_id, variant_id)'
+        )
+
+
+async def ensure_sales_channel_table(pool: PgPool) -> None:
+    """销售渠道(如"线下门店 POS"/"线上小程序")。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="sales_channel",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_sales_channel_product_table(pool: PgPool) -> None:
+    """渠道-商品上下架关联表。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="sales_channel_product",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("channel_id", "UUID NOT NULL REFERENCES sales_channel(id)"),
+            ("product_id", "UUID NOT NULL REFERENCES product(id)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+        ],
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_sales_channel_product_channel_product" '
+            'ON "public"."sales_channel_product" (channel_id, product_id)'
+        )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_region_table(pool)
@@ -736,6 +816,10 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_product_category_table(pool)
     await ensure_product_collection_table(pool)
     await ensure_product_collection_item_table(pool)
+    await ensure_price_list_table(pool)
+    await ensure_price_list_item_table(pool)
+    await ensure_sales_channel_table(pool)
+    await ensure_sales_channel_product_table(pool)
     await ensure_inventory_batch_table(pool)
     await ensure_cart_table(pool)
     await ensure_cart_line_item_table(pool)
