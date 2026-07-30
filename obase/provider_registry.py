@@ -328,3 +328,30 @@ class SearchProvider(Protocol):
     async def upsert_doc(self, *, index: str, document: dict[str, Any]) -> bool: ...
 
     async def delete_doc(self, *, index: str, doc_id: str) -> bool: ...
+
+
+@runtime_checkable
+class FulfillmentProvider(Protocol):
+    """物流履约 provider 协议（顺丰/UPS/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider/SearchProvider：走 generic
+    category("fulfillment")注册/取用，不是独立的 FulfillmentProviderRegistry 类。
+    """
+
+    async def get_rates(
+        self, *, package: dict[str, Any], address: dict[str, Any]
+    ) -> list[dict[str, Any]]: ...
+
+    async def create_label(self, *, shipment_info: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def cancel_label(self, *, tracking_number: str) -> bool: ...
+
+
+@runtime_checkable
+class TaxProvider(Protocol):
+    """税费计算 provider 协议（Avalara/TaxJar/Manual 等实现)。
+
+    同上：走 generic category("tax")注册/取用，不是独立的 TaxProviderRegistry 类。
+    """
+
+    async def calculate(self, *, address: dict[str, Any], items: list[Any]) -> dict[str, Any]: ...
