@@ -13,19 +13,23 @@ import pytest
 
 from obase.commerce_batch_schema import (
     ensure_app_user_table,
+    ensure_batch_job_table,
     ensure_cart_address_columns,
     ensure_cart_discount_table,
     ensure_cart_gift_card_table,
     ensure_cart_line_item_table,
     ensure_cart_table,
+    ensure_claim_table,
     ensure_commerce_batch_schema,
     ensure_customer_address_table,
     ensure_customer_group_table,
+    ensure_customer_order_refunded_column,
     ensure_customer_order_table,
     ensure_customer_table,
     ensure_discount_condition_table,
     ensure_discount_rule_table,
     ensure_discount_table,
+    ensure_fulfillment_table,
     ensure_gift_card_table,
     ensure_inventory_batch_table,
     ensure_order_line_item_table,
@@ -39,9 +43,11 @@ from obase.commerce_batch_schema import (
     ensure_product_table,
     ensure_product_variant_table,
     ensure_region_table,
+    ensure_return_request_table,
     ensure_sales_channel_product_table,
     ensure_sales_channel_table,
     ensure_stock_location_table,
+    ensure_swap_table,
     ensure_tax_rate_table,
 )
 from obase.persistence.pool import PgPool
@@ -78,6 +84,11 @@ _TABLES = [
     "payment_session",
     "customer_order",
     "order_line_item",
+    "fulfillment",
+    "return_request",
+    "swap",
+    "claim",
+    "batch_job",
 ]
 
 
@@ -775,6 +786,95 @@ class TestOrderTables:
         assert status == "pending"
 
 
+async def _make_order(pool: PgPool) -> str:
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            'INSERT INTO "public"."customer_order" (id) VALUES (gen_random_uuid()) RETURNING id'
+        )
+
+
+class TestFulfillmentReturnSwapClaimTables:
+    async def test_customer_order_refunded_cents_defaults_zero(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            refunded = await conn.fetchval(
+                'SELECT refunded_cents FROM "public"."customer_order" WHERE id = $1', order_id
+            )
+        assert refunded == 0
+
+    async def test_refunded_cents_negative_rejected(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            with pytest.raises(Exception, match="(?i)check"):
+                await conn.execute(
+                    'UPDATE "public"."customer_order" SET refunded_cents = -1 WHERE id = $1',
+                    order_id,
+                )
+
+    async def test_fulfillment_fk_and_default_status(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            status = await conn.fetchval(
+                'INSERT INTO "public"."fulfillment" (id, order_id, items) '
+                "VALUES (gen_random_uuid(), $1, '[]'::jsonb) RETURNING status",
+                order_id,
+            )
+        assert status == "created"
+
+    async def test_swap_fulfillment_id_fk(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            fulfillment_id = await conn.fetchval(
+                'INSERT INTO "public"."fulfillment" (id, order_id, items) '
+                "VALUES (gen_random_uuid(), $1, '[]'::jsonb) RETURNING id",
+                order_id,
+            )
+            swap_id = await conn.fetchval(
+                'INSERT INTO "public"."swap" '
+                "(id, order_id, return_items, new_items, fulfillment_id) "
+                "VALUES (gen_random_uuid(), $1, '[]'::jsonb, '[]'::jsonb, $2) RETURNING id",
+                order_id,
+                fulfillment_id,
+            )
+        assert swap_id is not None
+
+    async def test_claim_default_status_and_type(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'INSERT INTO "public"."claim" (id, order_id, items) '
+                "VALUES (gen_random_uuid(), $1, '[]'::jsonb) RETURNING status, claim_type",
+                order_id,
+            )
+        assert row["status"] == "pending"
+        assert row["claim_type"] == "refund"
+
+    async def test_return_request_fk_and_default_status(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        order_id = await _make_order(pg_pool)
+        async with pg_pool.acquire() as conn:
+            status = await conn.fetchval(
+                'INSERT INTO "public"."return_request" (id, order_id, items) '
+                "VALUES (gen_random_uuid(), $1, '[]'::jsonb) RETURNING status",
+                order_id,
+            )
+        assert status == "requested"
+
+    async def test_batch_job_default_status(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            status = await conn.fetchval(
+                'INSERT INTO "public"."batch_job" (id, job_type) '
+                "VALUES (gen_random_uuid(), 'bulk_import') RETURNING status"
+            )
+        assert status == "created"
+
+
 class TestIndividualTableCreators:
     """Each ensure_*_table function must be independently callable (used by
     callers that only need a subset, and exercised individually for
@@ -893,3 +993,18 @@ class TestIndividualTableCreators:
         await ensure_sales_channel_product_table(pg_pool)
         assert await _table_exists(pg_pool, "sales_channel")
         assert await _table_exists(pg_pool, "sales_channel_product")
+
+    async def test_ensure_fulfillment_and_aftersales_tables_in_order(self, pg_pool):
+        await ensure_cart_table(pg_pool)
+        await ensure_customer_order_table(pg_pool)
+        await ensure_customer_order_refunded_column(pg_pool)
+        await ensure_fulfillment_table(pg_pool)
+        await ensure_return_request_table(pg_pool)
+        await ensure_swap_table(pg_pool)
+        await ensure_claim_table(pg_pool)
+        await ensure_batch_job_table(pg_pool)
+        assert await _table_exists(pg_pool, "fulfillment")
+        assert await _table_exists(pg_pool, "return_request")
+        assert await _table_exists(pg_pool, "swap")
+        assert await _table_exists(pg_pool, "claim")
+        assert await _table_exists(pg_pool, "batch_job")

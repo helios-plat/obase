@@ -801,6 +801,172 @@ async def ensure_sales_channel_product_table(pool: PgPool) -> None:
         )
 
 
+async def ensure_customer_order_refunded_column(pool: PgPool) -> None:
+    """给 customer_order 追加 refunded_cents 列(累计已退款金额,退货/换货/
+    客诉退款都往这里累加,防止超额退款——同 cart 地址列走 ensure_column
+    加列迁移,不是塞进 ensure_table 的建表列表。
+    """
+    await ensure_column(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer_order",
+        column_name="refunded_cents",
+        column_def="INTEGER NOT NULL DEFAULT 0 CHECK (refunded_cents >= 0)",
+    )
+
+
+async def ensure_fulfillment_table(pool: PgPool) -> None:
+    """履约(出库)单据——SPEC §4.8。
+
+    本批次仓储模型里 inventory_batch.stock_qty/reserved_qty 已经在
+    complete_checkout/mark_draft_order_paid 时一次性从"预留"转为"永久出库"
+    (见 complete_checkout 的 reservation→sale 转换),所以 fulfillment 表本身
+    不再触碰库存——它只是"这批订单行被打包进了哪次发货"的追踪单据,
+    防止同一行被超额履约(靠对比 order_line_item.quantity 与该订单所有
+    非 canceled fulfillment 的 items 之和)。
+
+    items 是 JSONB(``[{"order_line_item_id": ..., "quantity": ...}]``),
+    不建独立 fulfillment_line_item 子表——同 cart 地址列一样,结构由
+    omodul 层 Pydantic 模型定义,这里只管存取。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="fulfillment",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("order_id", "UUID NOT NULL REFERENCES customer_order(id)"),
+            ("status", "TEXT NOT NULL DEFAULT 'created'"),
+            ("items", "JSONB NOT NULL"),
+            ("provider_name", "TEXT"),
+            ("tracking_number", "TEXT"),
+            ("carrier", "TEXT"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="fulfillment",
+        index_name="idx_fulfillment_order",
+        columns="order_id",
+    )
+
+
+async def ensure_return_request_table(pool: PgPool) -> None:
+    """退货申请(RMA)——SPEC §4.9。申请(create)→ 收货入库+算退款+执行退款
+    (receive,三步合一个元素)→ 或 cancel(仅限尚未收货)。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="return_request",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("order_id", "UUID NOT NULL REFERENCES customer_order(id)"),
+            ("status", "TEXT NOT NULL DEFAULT 'requested'"),
+            ("items", "JSONB NOT NULL"),
+            ("refund_amount_cents", "INTEGER"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="return_request",
+        index_name="idx_return_request_order",
+        columns="order_id",
+    )
+
+
+async def ensure_swap_table(pool: PgPool) -> None:
+    """换货——SPEC §4.9(退货 + 新发货 + 差价处理)。
+
+    new_items 立即预留库存(create_swap 时),fulfill_swap 时把该预留转为
+    永久出库(同 complete_checkout 的转换模式);return_items 只在 fulfill_swap
+    时回补库存(旧货此时才算真正收回,不在 create_swap 阶段动库存)。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="swap",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("order_id", "UUID NOT NULL REFERENCES customer_order(id)"),
+            ("status", "TEXT NOT NULL DEFAULT 'requested'"),
+            ("return_items", "JSONB NOT NULL"),
+            ("new_items", "JSONB NOT NULL"),
+            ("price_difference_cents", "INTEGER NOT NULL DEFAULT 0"),
+            ("payment_status", "TEXT NOT NULL DEFAULT 'not_paid'"),
+            ("fulfillment_id", "UUID REFERENCES fulfillment(id)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="swap",
+        index_name="idx_swap_order",
+        columns="order_id",
+    )
+
+
+async def ensure_claim_table(pool: PgPool) -> None:
+    """客诉索赔——SPEC §4.9。只有 create/cancel/fulfill 三个元素(SPEC 没给
+    单独的 approve/reject),所以 status 只有 pending/canceled/fulfilled 三态
+    ——cancel_claim 同时承载"客户撤回"和"商家拒绝"两种业务含义,都落
+    canceled(自由裁量设计,详见 omodul 元素 docstring)。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="claim",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("order_id", "UUID NOT NULL REFERENCES customer_order(id)"),
+            ("status", "TEXT NOT NULL DEFAULT 'pending'"),
+            ("claim_type", "TEXT NOT NULL DEFAULT 'refund'"),
+            ("items", "JSONB NOT NULL"),
+            ("refund_amount_cents", "INTEGER"),
+            ("new_items", "JSONB"),
+            ("fulfillment_id", "UUID REFERENCES fulfillment(id)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="claim",
+        index_name="idx_claim_order",
+        columns="order_id",
+    )
+
+
+async def ensure_batch_job_table(pool: PgPool) -> None:
+    """系统批处理长任务元数据——SPEC §4.10。job_type/payload/result 都是
+    调用方自定义的自由字段,本表只管生命周期(created/running/completed/
+    failed/canceled),不含任何具体批处理业务逻辑。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="batch_job",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("job_type", "TEXT NOT NULL"),
+            ("status", "TEXT NOT NULL DEFAULT 'created'"),
+            ("payload", "JSONB"),
+            ("result", "JSONB"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_region_table(pool)
@@ -833,3 +999,9 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_payment_session_table(pool)
     await ensure_customer_order_table(pool)
     await ensure_order_line_item_table(pool)
+    await ensure_customer_order_refunded_column(pool)
+    await ensure_fulfillment_table(pool)
+    await ensure_return_request_table(pool)
+    await ensure_swap_table(pool)
+    await ensure_claim_table(pool)
+    await ensure_batch_job_table(pool)
