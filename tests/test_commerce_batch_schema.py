@@ -30,6 +30,10 @@ from obase.commerce_batch_schema import (
     ensure_inventory_batch_table,
     ensure_order_line_item_table,
     ensure_payment_session_table,
+    ensure_product_category_table,
+    ensure_product_collection_item_table,
+    ensure_product_collection_table,
+    ensure_product_option_table,
     ensure_product_table,
     ensure_product_variant_table,
     ensure_region_table,
@@ -50,6 +54,10 @@ _TABLES = [
     "stock_location",
     "product",
     "product_variant",
+    "product_option",
+    "product_category",
+    "product_collection",
+    "product_collection_item",
     "inventory_batch",
     "cart",
     "cart_line_item",
@@ -135,6 +143,9 @@ class TestEnsureCommerceBatchSchema:
             "idx_tax_rate_region",
             "idx_customer_group",
             "idx_customer_address_customer",
+            "idx_product_option_product",
+            "idx_product_category_parent",
+            "uq_collection_item_collection_product",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -453,6 +464,70 @@ class TestRegionAndTaxRateTables:
         assert row["payment_provider_names"] == []
 
 
+class TestProductTaxonomyTables:
+    async def test_product_option_fk_to_product(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            with pytest.raises(Exception, match="(?i)foreign key|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."product_option" (id, product_id, name) '
+                    "VALUES (gen_random_uuid(), gen_random_uuid(), 'Size')"
+                )
+
+    async def test_product_category_self_referencing_parent(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            parent_id = await conn.fetchval(
+                'INSERT INTO "public"."product_category" (id, name, slug) '
+                "VALUES (gen_random_uuid(), 'Clothing', 'clothing') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."product_category" (id, name, slug, parent_id) '
+                "VALUES (gen_random_uuid(), 'Shirts', 'shirts', $1)",
+                parent_id,
+            )
+            with pytest.raises(Exception, match="(?i)foreign key|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."product_category" (id, name, slug, parent_id) '
+                    "VALUES (gen_random_uuid(), 'Ghost', 'ghost', gen_random_uuid())"
+                )
+
+    async def test_product_category_lft_rgt_default_zero(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'INSERT INTO "public"."product_category" (id, name, slug) '
+                "VALUES (gen_random_uuid(), 'Root', 'root') RETURNING lft, rgt"
+            )
+        assert row["lft"] == 0
+        assert row["rgt"] == 0
+
+    async def test_product_collection_item_unique_and_fk(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            collection_id = await conn.fetchval(
+                'INSERT INTO "public"."product_collection" (id, name, slug) '
+                "VALUES (gen_random_uuid(), 'Summer', 'summer') RETURNING id"
+            )
+            product_id = await conn.fetchval(
+                'INSERT INTO "public"."product" (id, title, slug) '
+                "VALUES (gen_random_uuid(), 'p', 'p-slug-coll') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."product_collection_item" '
+                "(id, collection_id, product_id) VALUES (gen_random_uuid(), $1, $2)",
+                collection_id,
+                product_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."product_collection_item" '
+                    "(id, collection_id, product_id) VALUES (gen_random_uuid(), $1, $2)",
+                    collection_id,
+                    product_id,
+                )
+
+
 class TestCustomerDomainTables:
     async def test_app_user_email_unique(self, pg_pool):
         await ensure_commerce_batch_schema(pg_pool)
@@ -698,3 +773,14 @@ class TestIndividualTableCreators:
         assert await _table_exists(pg_pool, "customer_group")
         assert await _table_exists(pg_pool, "customer")
         assert await _table_exists(pg_pool, "customer_address")
+
+    async def test_ensure_product_taxonomy_tables_in_order(self, pg_pool):
+        await ensure_product_table(pg_pool)
+        await ensure_product_option_table(pg_pool)
+        await ensure_product_category_table(pg_pool)
+        await ensure_product_collection_table(pg_pool)
+        await ensure_product_collection_item_table(pg_pool)
+        assert await _table_exists(pg_pool, "product_option")
+        assert await _table_exists(pg_pool, "product_category")
+        assert await _table_exists(pg_pool, "product_collection")
+        assert await _table_exists(pg_pool, "product_collection_item")

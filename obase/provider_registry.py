@@ -315,3 +315,16 @@ class NotificationProvider(Protocol):
     async def send_email(self, *, to: str, subject: str, body: str) -> dict[str, Any]: ...
 
     async def send_sms(self, *, to: str, message: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class SearchProvider(Protocol):
+    """搜索索引 provider 协议（MeiliSearch/Algolia/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider：走 generic
+    category("search")注册/取用，不是独立的 SearchProviderRegistry 类。
+    """
+
+    async def upsert_doc(self, *, index: str, document: dict[str, Any]) -> bool: ...
+
+    async def delete_doc(self, *, index: str, doc_id: str) -> bool: ...

@@ -109,6 +109,101 @@ async def ensure_product_variant_table(pool: PgPool) -> None:
     )
 
 
+async def ensure_product_option_table(pool: PgPool) -> None:
+    """属性键(如"尺码"/"颜色"),不含具体取值——取值在 product_variant.option_values。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_option",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("product_id", "UUID NOT NULL REFERENCES product(id)"),
+            ("name", "TEXT NOT NULL"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_option",
+        index_name="idx_product_option_product",
+        columns="product_id",
+    )
+
+
+async def ensure_product_category_table(pool: PgPool) -> None:
+    """商品分类——嵌套集模型(lft/rgt),parent_id 自引用建树。
+
+    lft/rgt 由 omodul 层在每次增删改后对整棵树重新计算写回(重建,不是
+    增量调整)——树规模预期不大，重建法实现简单且不容易出 bug，增量维护
+    嵌套集的插入/移动算法复杂度不成比例。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_category",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("slug", "TEXT NOT NULL UNIQUE"),
+            ("parent_id", "UUID REFERENCES product_category(id)"),
+            ("lft", "INTEGER NOT NULL DEFAULT 0"),
+            ("rgt", "INTEGER NOT NULL DEFAULT 0"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_category",
+        index_name="idx_product_category_parent",
+        columns="parent_id",
+    )
+
+
+async def ensure_product_collection_table(pool: PgPool) -> None:
+    """手工精选集合——跟 product_category 的树状分类是两回事，纯人工挑选。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_collection",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("slug", "TEXT NOT NULL UNIQUE"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_product_collection_item_table(pool: PgPool) -> None:
+    """集合-商品关联表。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="product_collection_item",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("collection_id", "UUID NOT NULL REFERENCES product_collection(id)"),
+            ("product_id", "UUID NOT NULL REFERENCES product(id)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+        ],
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_collection_item_collection_product" '
+            'ON "public"."product_collection_item" (collection_id, product_id)'
+        )
+
+
 async def ensure_inventory_batch_table(pool: PgPool) -> None:
     """批次 — 核心表。价格/成本/库存/溯源视频均独立挂在批次上，不下沉到 variant。"""
     await ensure_table(
@@ -637,6 +732,10 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_stock_location_table(pool)
     await ensure_product_table(pool)
     await ensure_product_variant_table(pool)
+    await ensure_product_option_table(pool)
+    await ensure_product_category_table(pool)
+    await ensure_product_collection_table(pool)
+    await ensure_product_collection_item_table(pool)
     await ensure_inventory_batch_table(pool)
     await ensure_cart_table(pool)
     await ensure_cart_line_item_table(pool)
