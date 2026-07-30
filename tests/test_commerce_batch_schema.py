@@ -12,9 +12,15 @@ import os
 import pytest
 
 from obase.commerce_batch_schema import (
+    ensure_cart_discount_table,
+    ensure_cart_gift_card_table,
     ensure_cart_line_item_table,
     ensure_cart_table,
     ensure_commerce_batch_schema,
+    ensure_discount_condition_table,
+    ensure_discount_rule_table,
+    ensure_discount_table,
+    ensure_gift_card_table,
     ensure_inventory_batch_table,
     ensure_product_table,
     ensure_product_variant_table,
@@ -31,6 +37,12 @@ _TABLES = [
     "inventory_batch",
     "cart",
     "cart_line_item",
+    "discount",
+    "discount_rule",
+    "discount_condition",
+    "gift_card",
+    "cart_discount",
+    "cart_gift_card",
 ]
 
 
@@ -93,6 +105,11 @@ class TestEnsureCommerceBatchSchema:
             "idx_batch_location_status",
             "idx_line_item_cart",
             "uq_line_item_cart_batch",
+            "idx_discount_condition_discount",
+            "idx_cart_discount_cart",
+            "uq_cart_discount_active",
+            "idx_cart_gift_card_cart",
+            "uq_cart_gift_card_active",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -160,6 +177,126 @@ class TestEnsureCommerceBatchSchema:
                 )
 
 
+class TestDiscountAndGiftCardTables:
+    async def test_discount_rule_type_check_constraint(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            discount_id = await conn.fetchval(
+                'INSERT INTO "public"."discount" (id, code) '
+                "VALUES (gen_random_uuid(), 'SAVE10') RETURNING id"
+            )
+            with pytest.raises(Exception, match="(?i)check constraint|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."discount_rule" (id, discount_id, rule_type) '
+                    "VALUES (gen_random_uuid(), $1, 'bogus_type')",
+                    discount_id,
+                )
+
+    async def test_discount_rule_unique_per_discount(self, pg_pool):
+        """One discount can only have one rule row (1:1)."""
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            discount_id = await conn.fetchval(
+                'INSERT INTO "public"."discount" (id, code) '
+                "VALUES (gen_random_uuid(), 'SAVE20') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."discount_rule" '
+                "(id, discount_id, rule_type, amount_cents) "
+                "VALUES (gen_random_uuid(), $1, 'fixed', 500)",
+                discount_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."discount_rule" '
+                    "(id, discount_id, rule_type, percent) "
+                    "VALUES (gen_random_uuid(), $1, 'percentage', 10)",
+                    discount_id,
+                )
+
+    async def test_gift_card_balance_cannot_exceed_initial(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            with pytest.raises(Exception, match="(?i)check constraint|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."gift_card" '
+                    "(id, code, initial_balance_cents, balance_cents) "
+                    "VALUES (gen_random_uuid(), 'GC1', 1000, 1500)"
+                )
+
+    async def test_cart_discount_rejects_duplicate_active_application(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            discount_id = await conn.fetchval(
+                'INSERT INTO "public"."discount" (id, code) '
+                "VALUES (gen_random_uuid(), 'SAVE5') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."cart_discount" '
+                "(id, cart_id, discount_id, applied_amount_cents) "
+                "VALUES (gen_random_uuid(), $1, $2, 500)",
+                cart_id,
+                discount_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."cart_discount" '
+                    "(id, cart_id, discount_id, applied_amount_cents) "
+                    "VALUES (gen_random_uuid(), $1, $2, 500)",
+                    cart_id,
+                    discount_id,
+                )
+
+    async def test_cart_gift_card_rejects_duplicate_active_application(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            gift_card_id = await conn.fetchval(
+                'INSERT INTO "public"."gift_card" '
+                "(id, code, initial_balance_cents, balance_cents) "
+                "VALUES (gen_random_uuid(), 'GC2', 1000, 1000) RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."cart_gift_card" '
+                "(id, cart_id, gift_card_id, applied_amount_cents) "
+                "VALUES (gen_random_uuid(), $1, $2, 300)",
+                cart_id,
+                gift_card_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."cart_gift_card" '
+                    "(id, cart_id, gift_card_id, applied_amount_cents) "
+                    "VALUES (gen_random_uuid(), $1, $2, 300)",
+                    cart_id,
+                    gift_card_id,
+                )
+
+    async def test_discount_condition_allows_multiple_rows_per_discount(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            discount_id = await conn.fetchval(
+                'INSERT INTO "public"."discount" (id, code) '
+                "VALUES (gen_random_uuid(), 'MULTI') RETURNING id"
+            )
+            for _ in range(2):
+                await conn.execute(
+                    'INSERT INTO "public"."discount_condition" '
+                    "(id, discount_id, condition_type, target_id) "
+                    "VALUES (gen_random_uuid(), $1, 'product', gen_random_uuid())",
+                    discount_id,
+                )
+            rows = await conn.fetch(
+                'SELECT * FROM "public"."discount_condition" WHERE discount_id = $1', discount_id
+            )
+        assert len(rows) == 2
+
+
 class TestIndividualTableCreators:
     """Each ensure_*_table function must be independently callable (used by
     callers that only need a subset, and exercised individually for
@@ -191,3 +328,28 @@ class TestIndividualTableCreators:
         await ensure_cart_line_item_table(pg_pool)
         assert await _table_exists(pg_pool, "cart")
         assert await _table_exists(pg_pool, "cart_line_item")
+
+    async def test_ensure_discount_tables_in_order(self, pg_pool):
+        await ensure_discount_table(pg_pool)
+        await ensure_discount_rule_table(pg_pool)
+        await ensure_discount_condition_table(pg_pool)
+        assert await _table_exists(pg_pool, "discount")
+        assert await _table_exists(pg_pool, "discount_rule")
+        assert await _table_exists(pg_pool, "discount_condition")
+
+    async def test_ensure_gift_card_table_standalone(self, pg_pool):
+        await ensure_gift_card_table(pg_pool)
+        assert await _table_exists(pg_pool, "gift_card")
+
+    async def test_ensure_cart_discount_and_gift_card_junction_tables(self, pg_pool):
+        await ensure_stock_location_table(pg_pool)
+        await ensure_product_table(pg_pool)
+        await ensure_product_variant_table(pg_pool)
+        await ensure_inventory_batch_table(pg_pool)
+        await ensure_cart_table(pg_pool)
+        await ensure_discount_table(pg_pool)
+        await ensure_gift_card_table(pg_pool)
+        await ensure_cart_discount_table(pg_pool)
+        await ensure_cart_gift_card_table(pg_pool)
+        assert await _table_exists(pg_pool, "cart_discount")
+        assert await _table_exists(pg_pool, "cart_gift_card")

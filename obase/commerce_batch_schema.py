@@ -3,8 +3,12 @@
 只负责建表结构，不含任何业务逻辑；CRUD 由 omodul 层完成
 (见 omodul.create_inventory_batch 等)。
 
-表：stock_location → product → product_variant → inventory_batch → cart → cart_line_item
-（按依赖顺序，后表持有前表的 FK）。
+表（按依赖顺序，后表持有前表的 FK）：
+  stock_location → product → product_variant → inventory_batch → cart → cart_line_item
+  discount → discount_rule → discount_condition
+  gift_card
+  cart_discount（依赖 cart + discount）
+  cart_gift_card（依赖 cart + gift_card）
 """
 
 from __future__ import annotations
@@ -105,7 +109,8 @@ async def ensure_inventory_batch_table(pool: PgPool) -> None:
             ("stock_qty", "INTEGER NOT NULL DEFAULT 0 CHECK (stock_qty >= 0)"),
             (
                 "reserved_qty",
-                "INTEGER NOT NULL DEFAULT 0 CHECK (reserved_qty >= 0 AND reserved_qty <= stock_qty)",
+                "INTEGER NOT NULL DEFAULT 0 "
+                "CHECK (reserved_qty >= 0 AND reserved_qty <= stock_qty)",
             ),
             ("inspection_status", "TEXT NOT NULL DEFAULT 'pending'"),
             ("inspected_by", "TEXT"),
@@ -192,6 +197,159 @@ async def ensure_cart_line_item_table(pool: PgPool) -> None:
         )
 
 
+async def ensure_discount_table(pool: PgPool) -> None:
+    """折扣壳——只存 code + 状态,数值规则在 discount_rule。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="discount",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("code", "TEXT NOT NULL UNIQUE"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_discount_rule_table(pool: PgPool) -> None:
+    """折扣数值规则,1:1 挂在 discount 上(一张券只有一种打法)。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="discount_rule",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("discount_id", "UUID NOT NULL UNIQUE REFERENCES discount(id)"),
+            (
+                "rule_type",
+                "TEXT NOT NULL CHECK (rule_type IN ('fixed', 'percentage', 'free_shipping'))",
+            ),
+            ("amount_cents", "INTEGER CHECK (amount_cents IS NULL OR amount_cents >= 0)"),
+            ("percent", "NUMERIC CHECK (percent IS NULL OR (percent >= 0 AND percent <= 100))"),
+            ("min_subtotal_cents", "INTEGER"),
+            ("region_codes", "TEXT[]"),
+            ("valid_from", "TIMESTAMPTZ"),
+            ("valid_until", "TIMESTAMPTZ"),
+            ("max_uses", "INTEGER"),
+            ("uses_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_discount_condition_table(pool: PgPool) -> None:
+    """折扣限制池(SKU/分类白名单),同一 discount 下可有多行。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="discount_condition",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("discount_id", "UUID NOT NULL REFERENCES discount(id)"),
+            (
+                "condition_type",
+                "TEXT NOT NULL CHECK (condition_type IN ('product', 'category', 'all'))",
+            ),
+            ("target_id", "UUID"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="discount_condition",
+        index_name="idx_discount_condition_discount",
+        columns="discount_id",
+    )
+
+
+async def ensure_gift_card_table(pool: PgPool) -> None:
+    """礼品卡。balance_cents 随核销递减,initial_balance_cents 只作发行记录不变。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="gift_card",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("code", "TEXT NOT NULL UNIQUE"),
+            ("initial_balance_cents", "INTEGER NOT NULL CHECK (initial_balance_cents >= 0)"),
+            (
+                "balance_cents",
+                "INTEGER NOT NULL "
+                "CHECK (balance_cents >= 0 AND balance_cents <= initial_balance_cents)",
+            ),
+            ("currency", "TEXT NOT NULL DEFAULT 'CNY'"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("expires_at", "TIMESTAMPTZ"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_cart_discount_table(pool: PgPool) -> None:
+    """购物车-折扣关联,记录本次生效的分摊额,便于 remove 时精确回滚。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="cart_discount",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("cart_id", "UUID NOT NULL REFERENCES cart(id)"),
+            ("discount_id", "UUID NOT NULL REFERENCES discount(id)"),
+            ("applied_amount_cents", "INTEGER NOT NULL CHECK (applied_amount_cents >= 0)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="cart_discount",
+        index_name="idx_cart_discount_cart",
+        columns="cart_id",
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_cart_discount_active" '
+            'ON "public"."cart_discount" (cart_id, discount_id) WHERE deleted_at IS NULL'
+        )
+
+
+async def ensure_cart_gift_card_table(pool: PgPool) -> None:
+    """购物车-礼品卡关联,记录本次核销额,便于 remove 时把余额补回礼品卡。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="cart_gift_card",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("cart_id", "UUID NOT NULL REFERENCES cart(id)"),
+            ("gift_card_id", "UUID NOT NULL REFERENCES gift_card(id)"),
+            ("applied_amount_cents", "INTEGER NOT NULL CHECK (applied_amount_cents >= 0)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="cart_gift_card",
+        index_name="idx_cart_gift_card_cart",
+        columns="cart_id",
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_cart_gift_card_active" '
+            'ON "public"."cart_gift_card" (cart_id, gift_card_id) WHERE deleted_at IS NULL'
+        )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_stock_location_table(pool)
@@ -200,3 +358,9 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_inventory_batch_table(pool)
     await ensure_cart_table(pool)
     await ensure_cart_line_item_table(pool)
+    await ensure_discount_table(pool)
+    await ensure_discount_rule_table(pool)
+    await ensure_discount_condition_table(pool)
+    await ensure_gift_card_table(pool)
+    await ensure_cart_discount_table(pool)
+    await ensure_cart_gift_card_table(pool)
