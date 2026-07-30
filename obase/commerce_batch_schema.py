@@ -9,11 +9,15 @@
   gift_card
   cart_discount（依赖 cart + discount）
   cart_gift_card（依赖 cart + gift_card）
+
+cart 表的地址列（billing_address/shipping_address）通过 ensure_column 追加，
+不写进 ensure_cart_table 的建表列表——ensure_table 只在表不存在时建表，对已存在
+的表是 no-op，新增列必须走 ensure_column 这种加列迁移，否则老环境永远加不上。
 """
 
 from __future__ import annotations
 
-from obase.persistence.ddl import ensure_index, ensure_table
+from obase.persistence.ddl import ensure_column, ensure_index, ensure_table
 from obase.persistence.pool import PgPool
 
 SCHEMA = "public"
@@ -197,6 +201,22 @@ async def ensure_cart_line_item_table(pool: PgPool) -> None:
         )
 
 
+async def ensure_cart_address_columns(pool: PgPool) -> None:
+    """给 cart 表追加 billing_address/shipping_address 两个 JSONB 列。
+
+    不做独立 address 表(客户地址簿是 SPEC §4.2 尚未落地的另一个功能),
+    这里只存本次下单快照,结构由 omodul 层的 Pydantic 输入模型定义。
+    """
+    for column_name in ("billing_address", "shipping_address"):
+        await ensure_column(
+            pool=pool,
+            schema=SCHEMA,
+            table="cart",
+            column_name=column_name,
+            column_def="JSONB",
+        )
+
+
 async def ensure_discount_table(pool: PgPool) -> None:
     """折扣壳——只存 code + 状态,数值规则在 discount_rule。"""
     await ensure_table(
@@ -358,6 +378,7 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_inventory_batch_table(pool)
     await ensure_cart_table(pool)
     await ensure_cart_line_item_table(pool)
+    await ensure_cart_address_columns(pool)
     await ensure_discount_table(pool)
     await ensure_discount_rule_table(pool)
     await ensure_discount_condition_table(pool)

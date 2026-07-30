@@ -12,6 +12,7 @@ import os
 import pytest
 
 from obase.commerce_batch_schema import (
+    ensure_cart_address_columns,
     ensure_cart_discount_table,
     ensure_cart_gift_card_table,
     ensure_cart_line_item_table,
@@ -175,6 +176,40 @@ class TestEnsureCommerceBatchSchema:
                     cart_id,
                     batch_id,
                 )
+
+
+class TestCartAddressColumns:
+    async def test_columns_added_and_writable(self, pg_pool):
+        # asyncpg has no automatic dict<->jsonb codec registered on this pool,
+        # so both write and read go through explicit json.dumps/json.loads —
+        # exactly what omodul callers must do too (see create_inventory_batch's
+        # media_assets column for the existing precedent).
+        import json
+
+        await ensure_cart_table(pg_pool)
+        await ensure_cart_address_columns(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            await conn.execute(
+                'UPDATE "public"."cart" SET billing_address = $1, shipping_address = $2 '
+                "WHERE id = $3",
+                json.dumps({"city": "Shanghai"}),
+                json.dumps({"city": "Beijing"}),
+                cart_id,
+            )
+            row = await conn.fetchrow(
+                'SELECT billing_address, shipping_address FROM "public"."cart" WHERE id = $1',
+                cart_id,
+            )
+        assert json.loads(row["billing_address"]) == {"city": "Shanghai"}
+        assert json.loads(row["shipping_address"]) == {"city": "Beijing"}
+
+    async def test_rerun_is_idempotent(self, pg_pool):
+        await ensure_cart_table(pg_pool)
+        await ensure_cart_address_columns(pg_pool)
+        await ensure_cart_address_columns(pg_pool)  # must not raise
 
 
 class TestDiscountAndGiftCardTables:
