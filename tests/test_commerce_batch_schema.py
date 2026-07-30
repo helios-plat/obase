@@ -18,11 +18,13 @@ from obase.commerce_batch_schema import (
     ensure_cart_line_item_table,
     ensure_cart_table,
     ensure_commerce_batch_schema,
+    ensure_customer_order_table,
     ensure_discount_condition_table,
     ensure_discount_rule_table,
     ensure_discount_table,
     ensure_gift_card_table,
     ensure_inventory_batch_table,
+    ensure_order_line_item_table,
     ensure_payment_session_table,
     ensure_product_table,
     ensure_product_variant_table,
@@ -46,6 +48,8 @@ _TABLES = [
     "cart_discount",
     "cart_gift_card",
     "payment_session",
+    "customer_order",
+    "order_line_item",
 ]
 
 
@@ -115,6 +119,7 @@ class TestEnsureCommerceBatchSchema:
             "uq_cart_gift_card_active",
             "idx_payment_session_cart",
             "uq_payment_session_cart_provider",
+            "idx_order_line_item_order",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -386,6 +391,94 @@ class TestPaymentSessionTable:
         assert status == "authorized"
 
 
+class TestOrderTables:
+    async def test_cart_id_unique_per_order(self, pg_pool):
+        """A cart can only turn into one order — UNIQUE(cart_id)."""
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            await conn.execute(
+                'INSERT INTO "public"."customer_order" (id, cart_id) '
+                "VALUES (gen_random_uuid(), $1)",
+                cart_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."customer_order" (id, cart_id) '
+                    "VALUES (gen_random_uuid(), $1)",
+                    cart_id,
+                )
+
+    async def test_draft_order_without_cart_allowed(self, pg_pool):
+        """cart_id is nullable — multiple NULLs don't violate UNIQUE in Postgres."""
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO "public"."customer_order" (id, cart_id) '
+                "VALUES (gen_random_uuid(), NULL)"
+            )
+            # A second cart-less order must also succeed (NULLs aren't equal to each other).
+            await conn.execute(
+                'INSERT INTO "public"."customer_order" (id, cart_id) '
+                "VALUES (gen_random_uuid(), NULL)"
+            )
+            count = await conn.fetchval(
+                'SELECT COUNT(*) FROM "public"."customer_order" WHERE cart_id IS NULL'
+            )
+        assert count == 2
+
+    async def test_order_line_item_fk_to_order_and_batch(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            loc_id = await conn.fetchval(
+                'INSERT INTO "public"."stock_location" (id, name, region_code) '
+                "VALUES (gen_random_uuid(), 'loc', 'cn-east') RETURNING id"
+            )
+            prod_id = await conn.fetchval(
+                'INSERT INTO "public"."product" (id, title, slug) '
+                "VALUES (gen_random_uuid(), 'p', 'p-slug-order') RETURNING id"
+            )
+            variant_id = await conn.fetchval(
+                'INSERT INTO "public"."product_variant" (id, product_id, sku_code) '
+                "VALUES (gen_random_uuid(), $1, 'SKU-ORDER-1') RETURNING id",
+                prod_id,
+            )
+            batch_id = await conn.fetchval(
+                'INSERT INTO "public"."inventory_batch" '
+                "(id, batch_no, variant_id, location_id, video_url, cost_price_cents, "
+                "retail_price_cents, stock_qty) "
+                "VALUES (gen_random_uuid(), 'B-ORDER-1', $1, $2, 'https://x/v.mp4', 100, 200, 5) "
+                "RETURNING id",
+                variant_id,
+                loc_id,
+            )
+            order_id = await conn.fetchval(
+                'INSERT INTO "public"."customer_order" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            await conn.execute(
+                'INSERT INTO "public"."order_line_item" '
+                "(id, order_id, batch_id, quantity, unit_price_cents, line_total_cents) "
+                "VALUES (gen_random_uuid(), $1, $2, 1, 200, 200)",
+                order_id,
+                batch_id,
+            )
+            rows = await conn.fetch(
+                'SELECT * FROM "public"."order_line_item" WHERE order_id = $1', order_id
+            )
+        assert len(rows) == 1
+
+    async def test_default_status_is_pending(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            status = await conn.fetchval(
+                'INSERT INTO "public"."customer_order" (id) VALUES (gen_random_uuid()) '
+                "RETURNING status"
+            )
+        assert status == "pending"
+
+
 class TestIndividualTableCreators:
     """Each ensure_*_table function must be independently callable (used by
     callers that only need a subset, and exercised individually for
@@ -451,3 +544,14 @@ class TestIndividualTableCreators:
         await ensure_cart_table(pg_pool)
         await ensure_payment_session_table(pg_pool)
         assert await _table_exists(pg_pool, "payment_session")
+
+    async def test_ensure_order_tables_in_order(self, pg_pool):
+        await ensure_stock_location_table(pg_pool)
+        await ensure_product_table(pg_pool)
+        await ensure_product_variant_table(pg_pool)
+        await ensure_inventory_batch_table(pg_pool)
+        await ensure_cart_table(pg_pool)
+        await ensure_customer_order_table(pg_pool)
+        await ensure_order_line_item_table(pg_pool)
+        assert await _table_exists(pg_pool, "customer_order")
+        assert await _table_exists(pg_pool, "order_line_item")

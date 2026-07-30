@@ -13,6 +13,11 @@
 cart 表的地址列（billing_address/shipping_address）通过 ensure_column 追加，
 不写进 ensure_cart_table 的建表列表——ensure_table 只在表不存在时建表，对已存在
 的表是 no-op，新增列必须走 ensure_column 这种加列迁移，否则老环境永远加不上。
+
+customer_order / order_line_item（依赖 cart + inventory_batch）：表名故意不叫
+"order"——那是 Postgres/SQL 保留字（ORDER BY），叫 customer_order 是常见的
+规避写法，省得后面每一条 SQL 都要小心翼翼转义；omodul 元素名(complete_checkout/
+update_order/cancel_order 等)仍按 SPEC 命名，表名只是实现细节。
 """
 
 from __future__ import annotations
@@ -413,6 +418,61 @@ async def ensure_payment_session_table(pool: PgPool) -> None:
         )
 
 
+async def ensure_customer_order_table(pool: PgPool) -> None:
+    """结账完成后的订单——totals/地址都是从 cart 复制过来的快照，不是引用
+    (cart 后续可能被清理/变化，订单必须保留下单当时的真相)。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer_order",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("cart_id", "UUID UNIQUE REFERENCES cart(id)"),
+            ("customer_id", "UUID"),
+            ("region_code", "TEXT"),
+            ("currency", "TEXT NOT NULL DEFAULT 'CNY'"),
+            ("status", "TEXT NOT NULL DEFAULT 'pending'"),
+            ("subtotal_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (subtotal_cents >= 0)"),
+            ("discount_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0)"),
+            ("tax_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (tax_cents >= 0)"),
+            ("shipping_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (shipping_cents >= 0)"),
+            ("grand_total_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (grand_total_cents >= 0)"),
+            ("payment_provider_name", "TEXT"),
+            ("payment_intent_id", "TEXT"),
+            ("billing_address", "JSONB"),
+            ("shipping_address", "JSONB"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_order_line_item_table(pool: PgPool) -> None:
+    """订单行——同样是从 cart_line_item 复制的快照，不引用 cart_line_item。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="order_line_item",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("order_id", "UUID NOT NULL REFERENCES customer_order(id)"),
+            ("batch_id", "UUID NOT NULL REFERENCES inventory_batch(id)"),
+            ("quantity", "INTEGER NOT NULL CHECK (quantity > 0)"),
+            ("unit_price_cents", "INTEGER NOT NULL CHECK (unit_price_cents >= 0)"),
+            ("line_total_cents", "INTEGER NOT NULL CHECK (line_total_cents >= 0)"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="order_line_item",
+        index_name="idx_order_line_item_order",
+        columns="order_id",
+    )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_stock_location_table(pool)
@@ -429,3 +489,5 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_cart_discount_table(pool)
     await ensure_cart_gift_card_table(pool)
     await ensure_payment_session_table(pool)
+    await ensure_customer_order_table(pool)
+    await ensure_order_line_item_table(pool)
