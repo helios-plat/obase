@@ -28,13 +28,17 @@ from obase.commerce_batch_schema import (
     ensure_payment_session_table,
     ensure_product_table,
     ensure_product_variant_table,
+    ensure_region_table,
     ensure_stock_location_table,
+    ensure_tax_rate_table,
 )
 from obase.persistence.pool import PgPool
 
 TEST_DSN = os.environ.get("TEST_PG_DSN", "postgresql://postgres:test@localhost:5432/obase_test")
 
 _TABLES = [
+    "region",
+    "tax_rate",
     "stock_location",
     "product",
     "product_variant",
@@ -120,6 +124,7 @@ class TestEnsureCommerceBatchSchema:
             "idx_payment_session_cart",
             "uq_payment_session_cart_provider",
             "idx_order_line_item_order",
+            "idx_tax_rate_region",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -391,6 +396,53 @@ class TestPaymentSessionTable:
         assert status == "authorized"
 
 
+class TestRegionAndTaxRateTables:
+    async def test_region_code_is_the_primary_key(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO "public"."region" (code, name, currency) '
+                "VALUES ('cn-east', '华东', 'CNY')"
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."region" (code, name, currency) '
+                    "VALUES ('cn-east', '华东2', 'CNY')"
+                )
+
+    async def test_tax_rate_fk_to_region_code(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            with pytest.raises(Exception, match="(?i)foreign key|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."tax_rate" (id, region_code, name, rate_percent) '
+                    "VALUES (gen_random_uuid(), 'ghost-region', 'VAT', 10)"
+                )
+
+    async def test_tax_rate_percent_bounds(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO "public"."region" (code, name, currency) '
+                "VALUES ('cn-south', '华南', 'CNY')"
+            )
+            with pytest.raises(Exception, match="(?i)check constraint|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."tax_rate" (id, region_code, name, rate_percent) '
+                    "VALUES (gen_random_uuid(), 'cn-south', 'VAT', 101)"
+                )
+
+    async def test_region_defaults(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'INSERT INTO "public"."region" (code, name, currency) '
+                "VALUES ('cn-north', '华北', 'CNY') RETURNING status, payment_provider_names"
+            )
+        assert row["status"] == "active"
+        assert row["payment_provider_names"] == []
+
+
 class TestOrderTables:
     async def test_cart_id_unique_per_order(self, pg_pool):
         """A cart can only turn into one order — UNIQUE(cart_id)."""
@@ -555,3 +607,9 @@ class TestIndividualTableCreators:
         await ensure_order_line_item_table(pg_pool)
         assert await _table_exists(pg_pool, "customer_order")
         assert await _table_exists(pg_pool, "order_line_item")
+
+    async def test_ensure_region_and_tax_rate_tables_in_order(self, pg_pool):
+        await ensure_region_table(pg_pool)
+        await ensure_tax_rate_table(pg_pool)
+        assert await _table_exists(pg_pool, "region")
+        assert await _table_exists(pg_pool, "tax_rate")

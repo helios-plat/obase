@@ -18,6 +18,11 @@ customer_order / order_line_item（依赖 cart + inventory_batch）：表名故�
 "order"——那是 Postgres/SQL 保留字（ORDER BY），叫 customer_order 是常见的
 规避写法，省得后面每一条 SQL 都要小心翼翼转义；omodul 元素名(complete_checkout/
 update_order/cancel_order 等)仍按 SPEC 命名，表名只是实现细节。
+
+region：主键直接用 TEXT code（如 "cn-east"），不是 UUID id——cart/
+stock_location/customer_order 从批次仓储垂直一开始就把 region_code 当自然键
+到处用，这里不引入第二套"UUID id + code 字段"的并行概念，直接统一。
+tax_rate.region_code 因此可以真的做成 FK REFERENCES region(code)。
 """
 
 from __future__ import annotations
@@ -473,8 +478,58 @@ async def ensure_order_line_item_table(pool: PgPool) -> None:
     )
 
 
+async def ensure_region_table(pool: PgPool) -> None:
+    """区域主表——主键是 code(不是 UUID id),见模块 docstring。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="region",
+        columns=[
+            ("code", "TEXT PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("currency", "TEXT NOT NULL"),
+            ("payment_provider_names", "TEXT[] NOT NULL DEFAULT '{}'"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_tax_rate_table(pool: PgPool) -> None:
+    """税率主表,挂在具体区域下。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="tax_rate",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("region_code", "TEXT NOT NULL REFERENCES region(code)"),
+            ("name", "TEXT NOT NULL"),
+            (
+                "rate_percent",
+                "NUMERIC NOT NULL CHECK (rate_percent >= 0 AND rate_percent <= 100)",
+            ),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="tax_rate",
+        index_name="idx_tax_rate_region",
+        columns="region_code",
+    )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
+    await ensure_region_table(pool)
+    await ensure_tax_rate_table(pool)
     await ensure_stock_location_table(pool)
     await ensure_product_table(pool)
     await ensure_product_variant_table(pool)
