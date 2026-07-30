@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, patch
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from obase.cache import Cache, cache_invalidate, cached
-from obase.exceptions import CacheError, OBaseError
+from obase.cache import Cache, DistributedLock, cache_invalidate, cached
+from obase.exceptions import CacheError, LockAcquisitionError, OBaseError
+
+TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/0")
 
 
 class TestCacheGetPut:
@@ -153,3 +156,125 @@ class TestCacheInvalidate:
         with patch.dict("sys.modules", {"redis": None}):
             with pytest.raises((OBaseError, ImportError)):
                 cache_invalidate(key="k")
+
+
+# ---------------------------------------------------------------------------
+# DistributedLock — mocked unit tests (deterministic, no real Redis needed)
+# ---------------------------------------------------------------------------
+
+
+class TestDistributedLockMocked:
+    def _make_client(self, *, set_side_effect) -> AsyncMock:
+        client = AsyncMock()
+        client.set.side_effect = set_side_effect
+        return client
+
+    async def test_acquire_and_release_happy_path(self):
+        client = self._make_client(set_side_effect=[True])
+        with patch("redis.asyncio.Redis.from_url", return_value=client):
+            async with DistributedLock(key="cart:1", ttl_seconds=1.0) as lock:
+                assert lock is not None
+        client.set.assert_awaited_once()
+        client.eval.assert_awaited_once()
+        client.aclose.assert_awaited_once()
+
+    async def test_release_uses_compare_and_del_with_own_token(self):
+        client = self._make_client(set_side_effect=[True])
+        captured_token = None
+        with patch("redis.asyncio.Redis.from_url", return_value=client):
+            async with DistributedLock(key="cart:1") as lock:
+                captured_token = lock._token
+        eval_args = client.eval.await_args.args
+        # eval(script, numkeys, key, token) — token must be this instance's own token
+        assert eval_args[-1] == captured_token
+        assert captured_token is not None
+
+    async def test_acquire_timeout_raises_lock_acquisition_error(self):
+        client = self._make_client(set_side_effect=lambda *a, **k: False)
+        with patch("redis.asyncio.Redis.from_url", return_value=client):
+            with pytest.raises(LockAcquisitionError, match="Could not acquire lock"):
+                async with DistributedLock(key="busy", timeout_seconds=0.1, retry_interval=0.03):
+                    pass  # pragma: no cover
+        client.aclose.assert_awaited_once()
+
+    async def test_acquire_retries_then_succeeds(self):
+        client = self._make_client(set_side_effect=[False, False, True])
+        with patch("redis.asyncio.Redis.from_url", return_value=client):
+            async with DistributedLock(key="retry", timeout_seconds=2.0, retry_interval=0.01):
+                pass
+        assert client.set.await_count == 3
+
+    async def test_missing_redis_package_raises_obase_error(self):
+        with patch.dict("sys.modules", {"redis.asyncio": None}):
+            with pytest.raises((OBaseError, ImportError)):
+                async with DistributedLock(key="x"):
+                    pass  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# DistributedLock — real Redis integration (skips automatically if unavailable)
+# ---------------------------------------------------------------------------
+
+
+class TestDistributedLockIntegration:
+    @pytest.fixture(autouse=True)
+    async def _require_redis(self):
+        try:
+            import redis.asyncio as redis_lib
+        except ImportError:
+            pytest.skip("redis package not installed")
+
+        client = redis_lib.Redis.from_url(TEST_REDIS_URL)
+        try:
+            await client.ping()
+        except Exception:
+            pytest.skip("Redis not available at TEST_REDIS_URL")
+        finally:
+            await client.aclose()
+
+    async def test_mutual_exclusion_across_two_holders(self):
+        """Two concurrent lock attempts on the same key must never overlap."""
+        key = "it:mutex-test"
+        critical_section_active = {"n": 0}
+        max_concurrent = {"n": 0}
+
+        async def hold_briefly():
+            async with DistributedLock(
+                key=key, redis_url=TEST_REDIS_URL, ttl_seconds=2.0, timeout_seconds=3.0
+            ):
+                critical_section_active["n"] += 1
+                max_concurrent["n"] = max(max_concurrent["n"], critical_section_active["n"])
+                await asyncio.sleep(0.1)
+                critical_section_active["n"] -= 1
+
+        await asyncio.gather(hold_briefly(), hold_briefly())
+        assert max_concurrent["n"] == 1
+
+    async def test_second_holder_times_out_while_first_holds(self):
+        key = "it:timeout-test"
+
+        async def hold_for(seconds: float):
+            async with DistributedLock(
+                key=key, redis_url=TEST_REDIS_URL, ttl_seconds=5.0, timeout_seconds=3.0
+            ):
+                await asyncio.sleep(seconds)
+
+        async def try_acquire_briefly():
+            async with DistributedLock(
+                key=key, redis_url=TEST_REDIS_URL, ttl_seconds=5.0, timeout_seconds=0.2
+            ):
+                pass  # pragma: no cover
+
+        holder_task = asyncio.create_task(hold_for(0.5))
+        await asyncio.sleep(0.05)  # let holder acquire first
+        with pytest.raises(LockAcquisitionError):
+            await try_acquire_briefly()
+        await holder_task
+
+    async def test_lock_released_after_context_allows_reacquire(self):
+        key = "it:release-test"
+        async with DistributedLock(key=key, redis_url=TEST_REDIS_URL, timeout_seconds=1.0):
+            pass
+        # Should not raise — the lock must have been released.
+        async with DistributedLock(key=key, redis_url=TEST_REDIS_URL, timeout_seconds=1.0):
+            pass

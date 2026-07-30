@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import platform
 import shutil
 import time
 from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
 
 import structlog
 
@@ -126,3 +128,119 @@ class FS:
         except OSError as exc:
             tmp.unlink(missing_ok=True)
             raise FSError(f"Write failed for {path}: {exc}") from exc
+
+
+@runtime_checkable
+class FileStorage(Protocol):
+    """S3/Local 上传下载抽象的统一接口(SPEC §1 ``obase.fs``)。"""
+
+    async def upload(self, *, local_path: Path, key: str) -> str: ...
+
+    async def download(self, *, key: str, local_path: Path) -> None: ...
+
+    async def delete(self, *, key: str) -> bool: ...
+
+
+class LocalFileStorage:
+    """把 `key` 当作 `base_dir` 下的相对路径,纯本地磁盘实现,无外部依赖。"""
+
+    def __init__(self, *, base_dir: Path) -> None:
+        self._base_dir = base_dir
+
+    def _resolve(self, key: str) -> Path:
+        return self._base_dir / key
+
+    async def upload(self, *, local_path: Path, key: str) -> str:
+        if not local_path.exists():
+            raise FSError(f"LocalFileStorage: local file not found: {local_path}")
+        dest = self._resolve(key)
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(local_path, dest)
+        except OSError as exc:
+            raise FSError(f"LocalFileStorage: upload failed for {key!r}: {exc}") from exc
+        return key
+
+    async def download(self, *, key: str, local_path: Path) -> None:
+        src = self._resolve(key)
+        if not src.exists():
+            raise FSError(f"LocalFileStorage: key not found: {key!r}")
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, local_path)
+        except OSError as exc:
+            raise FSError(f"LocalFileStorage: download failed for {key!r}: {exc}") from exc
+
+    async def delete(self, *, key: str) -> bool:
+        target = self._resolve(key)
+        if not target.exists():
+            return False
+        target.unlink()
+        return True
+
+
+class S3FileStorage:
+    """S3(或兼容 S3 API 的服务,如 MinIO 传 endpoint_url)上传下载实现。
+
+    boto3 走懒加载导入(``obase[storage]`` extra),不装这个 extra 时
+    ``import obase.fs`` 本身不受影响,只有实际调用才会报错。
+    """
+
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        endpoint_url: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        region_name: str | None = None,
+    ) -> None:
+        self._bucket = bucket
+        self._endpoint_url = endpoint_url
+        self._access_key = access_key
+        self._secret_key = secret_key
+        self._region_name = region_name
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            try:
+                import boto3  # noqa: PLC0415
+            except ImportError as exc:
+                raise FSError(
+                    "S3FileStorage requires the 'boto3' package (obase[storage] extra)"
+                ) from exc
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=self._endpoint_url,
+                aws_access_key_id=self._access_key,
+                aws_secret_access_key=self._secret_key,
+                region_name=self._region_name,
+            )
+        return self._client
+
+    async def upload(self, *, local_path: Path, key: str) -> str:
+        if not local_path.exists():
+            raise FSError(f"S3FileStorage: local file not found: {local_path}")
+        client = self._get_client()
+        try:
+            await asyncio.to_thread(client.upload_file, str(local_path), self._bucket, key)
+        except Exception as exc:
+            raise FSError(f"S3FileStorage: upload failed for {key!r}: {exc}") from exc
+        return key
+
+    async def download(self, *, key: str, local_path: Path) -> None:
+        client = self._get_client()
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(client.download_file, self._bucket, key, str(local_path))
+        except Exception as exc:
+            raise FSError(f"S3FileStorage: download failed for {key!r}: {exc}") from exc
+
+    async def delete(self, *, key: str) -> bool:
+        client = self._get_client()
+        try:
+            await asyncio.to_thread(client.delete_object, Bucket=self._bucket, Key=key)
+        except Exception as exc:
+            raise FSError(f"S3FileStorage: delete failed for {key!r}: {exc}") from exc
+        return True

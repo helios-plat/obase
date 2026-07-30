@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.19.1"
+__version__ = "0.31.0"
 
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
@@ -23,7 +23,7 @@ from obase import (
     webhook,
 )
 from obase.bootstrap import bootstrap, load_env
-from obase.cache import Cache, cached
+from obase.cache import Cache, DistributedLock, cached
 from obase.cost_tracker import (
     CostBreakdown,
     CostTracker,
@@ -37,6 +37,7 @@ from obase.exceptions import (
     CacheError,
     EnvLoadError,
     FSError,
+    LockAcquisitionError,
     ObaseAuthError,
     OBaseError,
     ObaseSecretsError,
@@ -68,6 +69,7 @@ __all__ = [
     "uuid7",
     "Cache",
     "cached",
+    "DistributedLock",
     "CostTracker",
     "PricingEntry",
     "PricingTable",
@@ -80,6 +82,7 @@ __all__ = [
     "PricingNotConfiguredError",
     "EnvLoadError",
     "CacheError",
+    "LockAcquisitionError",
     "RateLimitExceeded",
     "ProviderNotFoundError",
     "ProviderDiscoveryError",

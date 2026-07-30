@@ -282,3 +282,76 @@ class ImageGenCaller(Protocol):
         height: int = 1024,
         **kwargs: Any,
     ) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class PaymentProvider(Protocol):
+    """支付 provider 协议（Stripe/PayPal/Manual 等实现)。
+
+    走 ProviderRegistry 的 generic category("payment")注册/取用，不是独立的
+    PaymentProviderRegistry 类——跟 llm/vlm/image_gen 之外的任意新 category
+    是同一套机制（见 ProviderRegistry.register_generic/generic）。
+    """
+
+    async def authorize(
+        self, *, amount: int, currency: str, meta: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
+    async def capture(self, *, intent_id: str) -> dict[str, Any]: ...
+
+    async def refund(self, *, intent_id: str, amount: int) -> dict[str, Any]: ...
+
+    async def cancel(self, *, intent_id: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class NotificationProvider(Protocol):
+    """通知 provider 协议（SendGrid/Twilio/Manual 等实现)。
+
+    同 PaymentProvider：走 generic category("notification")注册/取用，不是
+    独立的 NotificationProviderRegistry 类。
+    """
+
+    async def send_email(self, *, to: str, subject: str, body: str) -> dict[str, Any]: ...
+
+    async def send_sms(self, *, to: str, message: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class SearchProvider(Protocol):
+    """搜索索引 provider 协议（MeiliSearch/Algolia/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider：走 generic
+    category("search")注册/取用，不是独立的 SearchProviderRegistry 类。
+    """
+
+    async def upsert_doc(self, *, index: str, document: dict[str, Any]) -> bool: ...
+
+    async def delete_doc(self, *, index: str, doc_id: str) -> bool: ...
+
+
+@runtime_checkable
+class FulfillmentProvider(Protocol):
+    """物流履约 provider 协议（顺丰/UPS/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider/SearchProvider：走 generic
+    category("fulfillment")注册/取用，不是独立的 FulfillmentProviderRegistry 类。
+    """
+
+    async def get_rates(
+        self, *, package: dict[str, Any], address: dict[str, Any]
+    ) -> list[dict[str, Any]]: ...
+
+    async def create_label(self, *, shipment_info: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def cancel_label(self, *, tracking_number: str) -> bool: ...
+
+
+@runtime_checkable
+class TaxProvider(Protocol):
+    """税费计算 provider 协议（Avalara/TaxJar/Manual 等实现)。
+
+    同上：走 generic category("tax")注册/取用，不是独立的 TaxProviderRegistry 类。
+    """
+
+    async def calculate(self, *, address: dict[str, Any], items: list[Any]) -> dict[str, Any]: ...
