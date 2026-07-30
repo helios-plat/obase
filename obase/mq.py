@@ -1,4 +1,5 @@
-"""obase.mq — Async message-queue publisher and consumer (aio_pika / RabbitMQ).
+"""obase.mq — Async message-queue publisher/consumer (aio_pika / RabbitMQ) and
+topic pub/sub EventBus (Redis Pub/Sub).
 
 Connection failures always raise — messages are never silently dropped.
 Consumers use manual ack: handler failure leaves the message un-acked.
@@ -7,6 +8,8 @@ Consumers use manual ack: handler failure leaves the message un-acked.
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -177,6 +180,120 @@ class MQConsumer:
 
     async def __aenter__(self) -> MQConsumer:
         await self.connect()
+        return self
+
+    async def __aexit__(self, *_: Any) -> None:
+        await self.close()
+
+
+class EventBus:
+    """Topic-based publish/subscribe over Redis Pub/Sub.
+
+    Simpler than MQPublisher/MQConsumer's exchange/queue model — for
+    fire-and-forget event fanout (e.g. order.created, cart.abandoned) where
+    no delivery guarantee or persistence is needed. Payloads are JSON-encoded.
+
+    Args:
+        redis_url: Redis connection URL, e.g. ``"redis://localhost:6379/0"``.
+    """
+
+    def __init__(self, *, redis_url: str = "redis://localhost:6379/0") -> None:
+        self._redis_url = redis_url
+        self._redis: Any = None
+
+    async def _client(self) -> Any:
+        if self._redis is None:
+            try:
+                import redis.asyncio as redis_lib  # noqa: PLC0415
+            except ImportError as exc:
+                raise MQConnectionError(
+                    "EventBus requires the 'redis' package (obase[cache] extra)"
+                ) from exc
+            try:
+                self._redis = redis_lib.from_url(self._redis_url)
+                await self._redis.ping()
+            except MQConnectionError:
+                raise
+            except Exception as exc:
+                raise MQConnectionError(
+                    f"EventBus: failed to connect to {self._redis_url!r}: {exc}"
+                ) from exc
+        return self._redis
+
+    async def publish(self, topic: str, payload: dict[str, Any]) -> int:
+        """Publish a JSON-encoded payload to `topic`.
+
+        Args:
+            topic: Redis Pub/Sub channel name.
+            payload: JSON-serializable event payload.
+
+        Returns:
+            Number of subscribers that received the message (0 if none are
+            currently listening — Pub/Sub does not persist/replay).
+
+        Raises:
+            MQConnectionError: Redis unavailable or the publish call failed.
+        """
+        client = await self._client()
+        try:
+            return int(await client.publish(topic, json.dumps(payload)))
+        except Exception as exc:
+            raise MQConnectionError(f"EventBus: publish to {topic!r} failed: {exc}") from exc
+
+    async def subscribe(
+        self,
+        topic: str,
+        handler: Callable[[dict[str, Any]], Any],
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        """Subscribe to `topic`, calling `handler(payload)` for each message.
+
+        A handler exception is logged (not re-raised) so one bad message
+        doesn't kill the whole listener loop — unlike MQConsumer, Pub/Sub has
+        no redelivery/nack concept, so there is nothing to leave un-acked.
+
+        Args:
+            topic: Redis Pub/Sub channel name.
+            handler: Async or sync callable receiving the decoded payload dict.
+            timeout: Stop listening after this many seconds (useful for tests).
+                None means listen until the task is cancelled.
+
+        Raises:
+            MQConnectionError: Redis unavailable.
+        """
+        import structlog
+
+        log = structlog.get_logger()
+        client = await self._client()
+        pubsub = client.pubsub()
+        await pubsub.subscribe(topic)
+        try:
+            deadline = time.monotonic() + timeout if timeout is not None else None
+            while deadline is None or time.monotonic() < deadline:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message is None:
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(payload)
+                    else:
+                        handler(payload)
+                except Exception as exc:
+                    log.warning("obase.mq.eventbus_handler_error", topic=topic, error=str(exc))
+        finally:
+            await pubsub.unsubscribe(topic)
+            await pubsub.aclose()
+
+    async def close(self) -> None:
+        """Close the underlying Redis connection, if open."""
+        if self._redis is not None:
+            await self._redis.aclose()
+            self._redis = None
+
+    async def __aenter__(self) -> EventBus:
+        await self._client()
         return self
 
     async def __aexit__(self, *_: Any) -> None:
