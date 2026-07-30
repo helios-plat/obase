@@ -370,6 +370,49 @@ async def ensure_cart_gift_card_table(pool: PgPool) -> None:
         )
 
 
+async def ensure_payment_session_table(pool: PgPool) -> None:
+    """购物车的候选支付会话——一个 cart 可以对多个 provider 各建一条(SPEC
+    "多态调 ext_pay_authorize 生成多 Session"),set_payment_session 从中选一条
+    标记 status='selected'。UNIQUE(cart_id, provider_name):同一 provider 不
+    重复建会话(重试应该更新既有行,不是插新行——由 omodul 层用
+    ON CONFLICT/先查再写实现,这里只保证约束)。
+    """
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="payment_session",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("cart_id", "UUID NOT NULL REFERENCES cart(id)"),
+            ("provider_name", "TEXT NOT NULL"),
+            ("amount_cents", "INTEGER NOT NULL CHECK (amount_cents >= 0)"),
+            ("currency", "TEXT NOT NULL"),
+            (
+                "status",
+                "TEXT NOT NULL DEFAULT 'authorized' "
+                "CHECK (status IN ('authorized', 'selected', 'canceled', 'failed'))",
+            ),
+            ("provider_intent_id", "TEXT"),
+            ("error_message", "TEXT"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="payment_session",
+        index_name="idx_payment_session_cart",
+        columns="cart_id",
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "uq_payment_session_cart_provider" '
+            'ON "public"."payment_session" (cart_id, provider_name) WHERE deleted_at IS NULL'
+        )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_stock_location_table(pool)
@@ -385,3 +428,4 @@ async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     await ensure_gift_card_table(pool)
     await ensure_cart_discount_table(pool)
     await ensure_cart_gift_card_table(pool)
+    await ensure_payment_session_table(pool)

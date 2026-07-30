@@ -23,6 +23,7 @@ from obase.commerce_batch_schema import (
     ensure_discount_table,
     ensure_gift_card_table,
     ensure_inventory_batch_table,
+    ensure_payment_session_table,
     ensure_product_table,
     ensure_product_variant_table,
     ensure_stock_location_table,
@@ -44,6 +45,7 @@ _TABLES = [
     "gift_card",
     "cart_discount",
     "cart_gift_card",
+    "payment_session",
 ]
 
 
@@ -111,6 +113,8 @@ class TestEnsureCommerceBatchSchema:
             "uq_cart_discount_active",
             "idx_cart_gift_card_cart",
             "uq_cart_gift_card_active",
+            "idx_payment_session_cart",
+            "uq_payment_session_cart_provider",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -332,6 +336,56 @@ class TestDiscountAndGiftCardTables:
         assert len(rows) == 2
 
 
+class TestPaymentSessionTable:
+    async def test_status_check_constraint_rejects_bogus_status(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            with pytest.raises(Exception, match="(?i)check constraint|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."payment_session" '
+                    "(id, cart_id, provider_name, amount_cents, currency, status) "
+                    "VALUES (gen_random_uuid(), $1, 'manual', 100, 'CNY', 'bogus')",
+                    cart_id,
+                )
+
+    async def test_rejects_duplicate_active_session_per_provider(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            await conn.execute(
+                'INSERT INTO "public"."payment_session" '
+                "(id, cart_id, provider_name, amount_cents, currency) "
+                "VALUES (gen_random_uuid(), $1, 'manual', 100, 'CNY')",
+                cart_id,
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."payment_session" '
+                    "(id, cart_id, provider_name, amount_cents, currency) "
+                    "VALUES (gen_random_uuid(), $1, 'manual', 200, 'CNY')",
+                    cart_id,
+                )
+
+    async def test_default_status_is_authorized(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            cart_id = await conn.fetchval(
+                'INSERT INTO "public"."cart" (id) VALUES (gen_random_uuid()) RETURNING id'
+            )
+            status = await conn.fetchval(
+                'INSERT INTO "public"."payment_session" '
+                "(id, cart_id, provider_name, amount_cents, currency) "
+                "VALUES (gen_random_uuid(), $1, 'manual', 100, 'CNY') RETURNING status",
+                cart_id,
+            )
+        assert status == "authorized"
+
+
 class TestIndividualTableCreators:
     """Each ensure_*_table function must be independently callable (used by
     callers that only need a subset, and exercised individually for
@@ -388,3 +442,12 @@ class TestIndividualTableCreators:
         await ensure_cart_gift_card_table(pg_pool)
         assert await _table_exists(pg_pool, "cart_discount")
         assert await _table_exists(pg_pool, "cart_gift_card")
+
+    async def test_ensure_payment_session_table_standalone(self, pg_pool):
+        await ensure_stock_location_table(pg_pool)
+        await ensure_product_table(pg_pool)
+        await ensure_product_variant_table(pg_pool)
+        await ensure_inventory_batch_table(pg_pool)
+        await ensure_cart_table(pg_pool)
+        await ensure_payment_session_table(pg_pool)
+        assert await _table_exists(pg_pool, "payment_session")

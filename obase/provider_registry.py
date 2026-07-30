@@ -282,3 +282,23 @@ class ImageGenCaller(Protocol):
         height: int = 1024,
         **kwargs: Any,
     ) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class PaymentProvider(Protocol):
+    """支付 provider 协议（Stripe/PayPal/Manual 等实现)。
+
+    走 ProviderRegistry 的 generic category("payment")注册/取用，不是独立的
+    PaymentProviderRegistry 类——跟 llm/vlm/image_gen 之外的任意新 category
+    是同一套机制（见 ProviderRegistry.register_generic/generic）。
+    """
+
+    async def authorize(
+        self, *, amount: int, currency: str, meta: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
+    async def capture(self, *, intent_id: str) -> dict[str, Any]: ...
+
+    async def refund(self, *, intent_id: str, amount: int) -> dict[str, Any]: ...
+
+    async def cancel(self, *, intent_id: str) -> dict[str, Any]: ...
