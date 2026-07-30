@@ -12,13 +12,17 @@ import os
 import pytest
 
 from obase.commerce_batch_schema import (
+    ensure_app_user_table,
     ensure_cart_address_columns,
     ensure_cart_discount_table,
     ensure_cart_gift_card_table,
     ensure_cart_line_item_table,
     ensure_cart_table,
     ensure_commerce_batch_schema,
+    ensure_customer_address_table,
+    ensure_customer_group_table,
     ensure_customer_order_table,
+    ensure_customer_table,
     ensure_discount_condition_table,
     ensure_discount_rule_table,
     ensure_discount_table,
@@ -39,6 +43,10 @@ TEST_DSN = os.environ.get("TEST_PG_DSN", "postgresql://postgres:test@localhost:5
 _TABLES = [
     "region",
     "tax_rate",
+    "app_user",
+    "customer_group",
+    "customer",
+    "customer_address",
     "stock_location",
     "product",
     "product_variant",
@@ -125,6 +133,8 @@ class TestEnsureCommerceBatchSchema:
             "uq_payment_session_cart_provider",
             "idx_order_line_item_order",
             "idx_tax_rate_region",
+            "idx_customer_group",
+            "idx_customer_address_customer",
         ):
             assert await _index_exists(pg_pool, idx), f"{idx} was not created"
 
@@ -443,6 +453,71 @@ class TestRegionAndTaxRateTables:
         assert row["payment_provider_names"] == []
 
 
+class TestCustomerDomainTables:
+    async def test_app_user_email_unique(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO "public"."app_user" (id, email, password_hash) '
+                "VALUES (gen_random_uuid(), 'admin@x.com', 'hash1')"
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."app_user" (id, email, password_hash) '
+                    "VALUES (gen_random_uuid(), 'admin@x.com', 'hash2')"
+                )
+
+    async def test_customer_email_unique(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO "public"."customer" (id, email) '
+                "VALUES (gen_random_uuid(), 'buyer@x.com')"
+            )
+            with pytest.raises(Exception, match="(?i)duplicate|unique"):
+                await conn.execute(
+                    'INSERT INTO "public"."customer" (id, email) '
+                    "VALUES (gen_random_uuid(), 'buyer@x.com')"
+                )
+
+    async def test_customer_group_fk(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            group_id = await conn.fetchval(
+                'INSERT INTO "public"."customer_group" (id, name) '
+                "VALUES (gen_random_uuid(), 'VIP') RETURNING id"
+            )
+            await conn.execute(
+                'INSERT INTO "public"."customer" (id, email, customer_group_id) '
+                "VALUES (gen_random_uuid(), 'vip@x.com', $1)",
+                group_id,
+            )
+            with pytest.raises(Exception, match="(?i)foreign key|violates"):
+                await conn.execute(
+                    'INSERT INTO "public"."customer" (id, email, customer_group_id) '
+                    "VALUES (gen_random_uuid(), 'ghost@x.com', gen_random_uuid())"
+                )
+
+    async def test_customer_address_fk_and_multiple_per_customer(self, pg_pool):
+        await ensure_commerce_batch_schema(pg_pool)
+        async with pg_pool.acquire() as conn:
+            customer_id = await conn.fetchval(
+                'INSERT INTO "public"."customer" (id, email) '
+                "VALUES (gen_random_uuid(), 'multi@x.com') RETURNING id"
+            )
+            for _i in range(2):
+                await conn.execute(
+                    'INSERT INTO "public"."customer_address" '
+                    "(id, customer_id, recipient_name, phone, address_line1, city, postal_code) "
+                    "VALUES (gen_random_uuid(), $1, 'name', 'phone', 'addr', 'city', '000000')",
+                    customer_id,
+                )
+            rows = await conn.fetch(
+                'SELECT * FROM "public"."customer_address" WHERE customer_id = $1', customer_id
+            )
+        assert len(rows) == 2
+
+
 class TestOrderTables:
     async def test_cart_id_unique_per_order(self, pg_pool):
         """A cart can only turn into one order — UNIQUE(cart_id)."""
@@ -613,3 +688,13 @@ class TestIndividualTableCreators:
         await ensure_tax_rate_table(pg_pool)
         assert await _table_exists(pg_pool, "region")
         assert await _table_exists(pg_pool, "tax_rate")
+
+    async def test_ensure_customer_domain_tables_in_order(self, pg_pool):
+        await ensure_app_user_table(pg_pool)
+        await ensure_customer_group_table(pg_pool)
+        await ensure_customer_table(pg_pool)
+        await ensure_customer_address_table(pg_pool)
+        assert await _table_exists(pg_pool, "app_user")
+        assert await _table_exists(pg_pool, "customer_group")
+        assert await _table_exists(pg_pool, "customer")
+        assert await _table_exists(pg_pool, "customer_address")

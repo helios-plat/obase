@@ -302,3 +302,16 @@ class PaymentProvider(Protocol):
     async def refund(self, *, intent_id: str, amount: int) -> dict[str, Any]: ...
 
     async def cancel(self, *, intent_id: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class NotificationProvider(Protocol):
+    """通知 provider 协议（SendGrid/Twilio/Manual 等实现)。
+
+    同 PaymentProvider：走 generic category("notification")注册/取用，不是
+    独立的 NotificationProviderRegistry 类。
+    """
+
+    async def send_email(self, *, to: str, subject: str, body: str) -> dict[str, Any]: ...
+
+    async def send_sms(self, *, to: str, message: str) -> dict[str, Any]: ...

@@ -1,6 +1,6 @@
 [project]
 name = "obase"
-version = "0.25.0"
+version = "0.26.0"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",

@@ -23,6 +23,11 @@ region：主键直接用 TEXT code（如 "cn-east"），不是 UUID id——cart
 stock_location/customer_order 从批次仓储垂直一开始就把 region_code 当自然键
 到处用，这里不引入第二套"UUID id + code 字段"的并行概念，直接统一。
 tax_rate.region_code 因此可以真的做成 FK REFERENCES region(code)。
+
+app_user / customer / customer_address / customer_group：客户域(SPEC §4.2)。
+app_user 是后台管理员账号，customer 是买家账号——两套完全独立的表，不共用
+一张 user 表(权限模型不同，字段也不同)。customer_address 是地址簿(多条，
+跟 cart.billing_address/shipping_address 那种"下单快照"不是一回事)。
 """
 
 from __future__ import annotations
@@ -526,10 +531,109 @@ async def ensure_tax_rate_table(pool: PgPool) -> None:
     )
 
 
+async def ensure_app_user_table(pool: PgPool) -> None:
+    """后台管理员账号(不是买家)。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="app_user",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("email", "TEXT NOT NULL UNIQUE"),
+            ("password_hash", "TEXT NOT NULL"),
+            ("name", "TEXT"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("reset_token", "TEXT"),
+            ("reset_token_expires_at", "TIMESTAMPTZ"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_customer_group_table(pool: PgPool) -> None:
+    """买家分组(先建,customer.customer_group_id 依赖它)。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer_group",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("name", "TEXT NOT NULL"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+
+
+async def ensure_customer_table(pool: PgPool) -> None:
+    """买家主账号。customer_group_id 单一分组归属(简化模型,不做多对多)。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("email", "TEXT NOT NULL UNIQUE"),
+            ("phone", "TEXT"),
+            ("name", "TEXT"),
+            ("customer_group_id", "UUID REFERENCES customer_group(id)"),
+            ("status", "TEXT NOT NULL DEFAULT 'active'"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer",
+        index_name="idx_customer_group",
+        columns="customer_group_id",
+    )
+
+
+async def ensure_customer_address_table(pool: PgPool) -> None:
+    """买家地址簿——多条,区别于 cart 的下单地址快照。"""
+    await ensure_table(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer_address",
+        columns=[
+            ("id", "UUID PRIMARY KEY"),
+            ("customer_id", "UUID NOT NULL REFERENCES customer(id)"),
+            ("recipient_name", "TEXT NOT NULL"),
+            ("phone", "TEXT NOT NULL"),
+            ("address_line1", "TEXT NOT NULL"),
+            ("address_line2", "TEXT NOT NULL DEFAULT ''"),
+            ("city", "TEXT NOT NULL"),
+            ("region_code", "TEXT"),
+            ("postal_code", "TEXT NOT NULL"),
+            ("is_default", "BOOLEAN NOT NULL DEFAULT false"),
+            ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMPTZ"),
+            ("deleted_at", "TIMESTAMPTZ"),
+        ],
+    )
+    await ensure_index(
+        pool=pool,
+        schema=SCHEMA,
+        table="customer_address",
+        index_name="idx_customer_address_customer",
+        columns="customer_id",
+    )
+
+
 async def ensure_commerce_batch_schema(pool: PgPool) -> None:
     """一次性按依赖顺序建齐本垂直所需的全部表。"""
     await ensure_region_table(pool)
     await ensure_tax_rate_table(pool)
+    await ensure_app_user_table(pool)
+    await ensure_customer_group_table(pool)
+    await ensure_customer_table(pool)
+    await ensure_customer_address_table(pool)
     await ensure_stock_location_table(pool)
     await ensure_product_table(pool)
     await ensure_product_variant_table(pool)
