@@ -4,6 +4,39 @@ from __future__ import annotations
 
 __version__ = "0.18.0"
 
+# Public-package contract.  Consumers use this data for compatibility checks;
+# it deliberately describes stable root exports rather than application code.
+__manifest__ = {
+    "package": "obase",
+    "version": __version__,
+    "elements": [
+        {
+            "name": "ProviderRegistry",
+            "kind": "provider_registry",
+            "module": "obase.provider_registry",
+            "signature": "ProviderRegistry.get() -> ProviderRegistry",
+            "depends_on": [],
+            "pillars": ["cost", "fingerprint", "trail", "report"],
+        },
+        {
+            "name": "PgPool",
+            "kind": "persistence",
+            "module": "obase.persistence",
+            "signature": "PgPool(dsn) -> PgPool",
+            "depends_on": [],
+            "pillars": ["trail", "report"],
+        },
+        {
+            "name": "run_pipeline",
+            "kind": "orchestration_primitive",
+            "module": "obase.orchestrator",
+            "signature": "(stages, context) -> RunState",
+            "depends_on": [],
+            "pillars": ["trail", "report"],
+        },
+    ],
+}
+
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
 # B1 — webhook signing submodule
@@ -63,6 +96,7 @@ from obase.uuid7 import uuid7
 
 __all__ = [
     "__version__",
+    "__manifest__",
     "bootstrap",
     "load_env",
     "uuid7",
