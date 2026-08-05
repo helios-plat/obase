@@ -109,6 +109,7 @@ _OPTIONAL_SUBMODULES = (
     "crypto",
     "email_client",
     "environ_processor_base",
+    "event_bus",
     "gpu",
     "http",
     "llm",
@@ -119,10 +120,14 @@ _OPTIONAL_SUBMODULES = (
     "notify",
     "observability",
     "ohlcv_store",
+    "market_data",
     "persistence",
     "price_store",
+    "rag_index_store",
     "retry",
     "sympy_runtime",
+    "secrets_store",
+    "task_store",
     "telegram_client",
     "text",
     "ts_writer",
@@ -166,6 +171,11 @@ _OPTIONAL_EXPORTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "McpClientHandle": ("mcp_client", ("McpClientHandle",)),
     "McpClientRegistry": ("mcp_client", ("McpClientRegistry",)),
     "config_loader": ("config", ("config_loader",)),
+    # --- heavy-SDK real implementations ---
+    "CheckpointStore": ("checkpoint_store", ("CheckpointStore",)),
+    "adaptive_scraper": ("adaptive_scraper", ("adaptive_scraper",)),
+    "agent_registry": ("agent_registry", ("AgentRegistry", "registry", "register_agent", "register_tool")),
+    "VectorMemory": ("vector_memory", ("VectorMemory",)),
 }
 
 # submodule aliases (e.g. `obase.text` was previously `from obase import text`)
@@ -177,6 +187,11 @@ _SUBMODULE_ALIASES = {
     "collector_base": "collector_base",
     "email_client": "email_client",
     "environ_processor_base": "environ_processor_base",
+    "event_bus": "event_bus",
+    "secrets_store": "secrets_store",
+    "task_store": "task_store",
+    "market_data": "market_data",
+    "rag_index_store": "rag_index_store",
     "ohlcv_store": "ohlcv_store",
     "price_store": "price_store",
     "symbol_normalize": "symbol_normalize",
@@ -210,3 +225,12 @@ def __getattr__(name: str) -> Any:
             if hasattr(module, attr):
                 return getattr(module, attr)
     raise AttributeError(f"module 'obase' has no attribute {name!r}")
+
+from .team_registry import TeamRegistry, make_team_config, make_team_member, make_task, make_message  # noqa: F401
+
+from .debounced_memory_queue import DebouncedMemoryQueue  # noqa: F401
+
+from .support_bundle_pack import support_bundle_pack  # noqa: F401
+
+from .knowledge_store import KnowledgeStore  # noqa: F401
+from .plugin_registry import PluginRegistry  # noqa: F401
