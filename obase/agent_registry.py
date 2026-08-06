@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-REGISTRY_TYPES = ("agent", "tool", "workflow", "plugin_agent", "plugin_tool")
+REGISTRY_TYPES = ("agent", "tool", "workflow", "plugin_agent", "plugin_tool", "runtime")
 
 
 class RegistryConflictError(Exception):
