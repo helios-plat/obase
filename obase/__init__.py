@@ -234,3 +234,11 @@ from .support_bundle_pack import support_bundle_pack  # noqa: F401
 
 from .knowledge_store import KnowledgeStore  # noqa: F401
 from .plugin_registry import PluginRegistry  # noqa: F401
+
+# ── Phase 2: 认知因果 / 蜜罐博弈 基础设施 ──────────────────────────
+from .causal_graph_store import (  # noqa: F401
+    CausalGraphError,
+    CausalGraphStore,
+    get_runtime_causal_store,
+)
+from .local_sandbox_pool import HoneypotAccessError, LocalSandboxPool, SandboxExecutionResult  # noqa: F401
