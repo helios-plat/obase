@@ -79,6 +79,8 @@ _NETWORK_FLAG = {{"attempted": False}}
 def _audit(event, args):
     if event in ("socket.connect", "socket.__new__", "socket.create_connection"):
         _NETWORK_FLAG["attempted"] = True
+        # 超时被 SIGKILL 前, stdout 必须留有取证痕迹 (run_python 超时分支扫描此标记)
+        print("NETWORK_ATTEMPT", flush=True)
     if event == "os.environ.__getitem__" and args and args[0] in HONEYPOT_KEYS:
         raise RuntimeError("HONEYPOT_ACCESS:" + str(args[0]))
 
@@ -219,6 +221,12 @@ class LocalSandboxPool:
                 exit_code = int(payload.get("exit_code", exit_code))
             except (json.JSONDecodeError, IndexError):
                 pass
+        else:
+            # 超时被 SIGKILL → wrapper 的 finally 未执行, payload 不可用。
+            # 但 audit hook 已把 NETWORK_ATTEMPT 写进 stdout — 扫描取证,
+            # 否则网络外发攻击(connect 挂起拖到超时)会漏报 hostile。
+            network_attempt = "NETWORK_ATTEMPT" in (stdout or "") or \
+                              "NETWORK_ATTEMPT" in (stderr or "")
 
         return SandboxExecutionResult(
             exit_code=exit_code,
