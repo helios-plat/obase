@@ -45,6 +45,13 @@ from obase.exceptions import (
 )
 from obase.fs import FS
 from obase.git import GitResult, run_git
+from obase.loop_event_store import (
+    AppendOnlyEventStore,
+    EVENT_SCHEMA_VERSION,
+    LoopStoreError,
+    QuotaTracker,
+    VerifyResult,
+)
 from obase.notification import NotificationComplianceFilter
 from obase.orchestrator import Pipeline, RunState, Stage, run_pipeline
 from obase.provider_registry import ProviderRegistry
@@ -94,6 +101,11 @@ __all__ = [
     "Trail",
     "load_trail",
     "query_trail",
+    "AppendOnlyEventStore",
+    "QuotaTracker",
+    "LoopStoreError",
+    "VerifyResult",
+    "EVENT_SCHEMA_VERSION",
     "NotificationComplianceFilter",
     "IntradayPollScheduler",
     "GitResult",
