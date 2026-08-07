@@ -172,6 +172,8 @@ _OPTIONAL_EXPORTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "McpClientRegistry": ("mcp_client", ("McpClientRegistry",)),
     "StdioMcpClient": ("mcp_stdio", ("StdioMcpClient",)),
     "StdioMcpError": ("mcp_stdio", ("StdioMcpError",)),
+    "StreamableHttpMcpClient": ("mcp_http", ("StreamableHttpMcpClient",)),
+    "HttpMcpError": ("mcp_http", ("HttpMcpError",)),
     "config_loader": ("config", ("config_loader",)),
     # --- heavy-SDK real implementations ---
     "CheckpointStore": ("checkpoint_store", ("CheckpointStore",)),
