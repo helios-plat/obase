@@ -75,13 +75,16 @@ class StdioMcpClient:
         startup_timeout: float = 15.0,
         request_timeout: float = 60.0,
         name: str = "stdio-mcp",
+        line_delimited: bool = False,
     ) -> None:
+        """line_delimited=True: JSON-lines 协议 (od mcp 等), 非 LSP 帧。"""
         self.cmd = list(cmd)
         self.cwd = str(cwd) if cwd else None
         self.env = env
         self.startup_timeout = startup_timeout
         self.request_timeout = request_timeout
         self.name = name
+        self.line_delimited = line_delimited
 
         self._proc: asyncio.subprocess.Process | None = None
         self._reader: asyncio.StreamReader | None = None
@@ -174,8 +177,14 @@ class StdioMcpClient:
             self._next_id += 1
             fut: asyncio.Future = asyncio.get_running_loop().create_future()
             self._pending[rid] = fut
-            self._writer.write(_encode_frame({"jsonrpc": "2.0", "id": rid,
-                                              "method": method, "params": params}))
+            if self.line_delimited:
+                self._writer.write(
+                    json.dumps({"jsonrpc": "2.0", "id": rid,
+                                "method": method, "params": params},
+                               ensure_ascii=False).encode("utf-8") + b"\n")
+            else:
+                self._writer.write(_encode_frame({"jsonrpc": "2.0", "id": rid,
+                                                  "method": method, "params": params}))
             await self._writer.drain()
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
@@ -183,20 +192,35 @@ class StdioMcpClient:
             raise StdioMcpError(f"{self.name}: {method} 超时 ({timeout}s)") from None
 
     async def _notify(self, method: str, params: dict | None = None) -> None:
-        self._writer.write(_encode_frame({"jsonrpc": "2.0", "method": method,
-                                          "params": params or {}}))
+        if self.line_delimited:
+            self._writer.write(
+                json.dumps({"jsonrpc": "2.0", "method": method,
+                            "params": params or {}}, ensure_ascii=False).encode("utf-8") + b"\n")
+        else:
+            self._writer.write(_encode_frame({"jsonrpc": "2.0", "method": method,
+                                              "params": params or {}}))
         await self._writer.drain()
 
     async def _read_loop(self) -> None:
         try:
             while self._proc and self._reader:
-                chunk = await self._reader.read(65536)
-                if not chunk:
-                    break
-                self._buf += chunk
-                frames, self._buf = _decode_frames(self._buf)
-                for frame in frames:
+                if self.line_delimited:
+                    line = await self._reader.readline()
+                    if not line:
+                        break
+                    try:
+                        frame = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
                     await self._dispatch(frame)
+                else:
+                    chunk = await self._reader.read(65536)
+                    if not chunk:
+                        break
+                    self._buf += chunk
+                    frames, self._buf = _decode_frames(self._buf)
+                    for frame in frames:
+                        await self._dispatch(frame)
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         finally:
