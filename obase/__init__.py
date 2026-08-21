@@ -45,6 +45,14 @@ from obase.exceptions import (
 )
 from obase.fs import FS
 from obase.git import GitResult, run_git
+from obase.hierarchical_context import (
+    HierarchicalContextError,
+    HierarchicalContextStore,
+    RetrievalResult,
+    RetrievalStep,
+    TokenBudgetExceeded,
+    retrieve,
+)
 from obase.loop_event_store import (
     AppendOnlyEventStore,
     EVENT_SCHEMA_VERSION,
@@ -53,9 +61,33 @@ from obase.loop_event_store import (
     VerifyResult,
 )
 from obase.notification import NotificationComplianceFilter
-from obase.orchestrator import Pipeline, RunState, Stage, run_pipeline
+from obase.orchestrator import (
+    Check,
+    CheckType,
+    Edge,
+    Node,
+    Pipeline,
+    Runbook,
+    RunEntry,
+    RunState,
+    Stage,
+    register_dynamic_check,
+    run_pipeline,
+    runbook_current,
+    runbook_goto,
+    runbook_history,
+    start_runbook,
+)
 from obase.provider_registry import ProviderRegistry
 from obase.rate_limit import RateLimiter, RateLimitRegistry
+from obase.runbook_loader import RunbookParseError, load_runbook_yaml, parse_runbook
+from obase.runbook_runtime import (
+    HookNotFoundError,
+    HookRegistry,
+    default_hook_runner,
+    make_default_check_runner,
+    register_hook,
+)
 from obase.scheduler import IntradayPollScheduler
 from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.trail import Trail, load_trail, query_trail
@@ -87,10 +119,35 @@ __all__ = [
     "ProviderDiscoveryError",
     "FSError",
     "FS",
+    "HierarchicalContextError",
+    "HierarchicalContextStore",
+    "RetrievalResult",
+    "RetrievalStep",
+    "TokenBudgetExceeded",
+    "retrieve",
     "Pipeline",
     "RunState",
     "Stage",
     "run_pipeline",
+    "Check",
+    "CheckType",
+    "Edge",
+    "Node",
+    "Runbook",
+    "RunEntry",
+    "register_dynamic_check",
+    "runbook_current",
+    "runbook_goto",
+    "runbook_history",
+    "start_runbook",
+    "HookNotFoundError",
+    "HookRegistry",
+    "default_hook_runner",
+    "make_default_check_runner",
+    "register_hook",
+    "RunbookParseError",
+    "load_runbook_yaml",
+    "parse_runbook",
     "ProviderRegistry",
     "RateLimitRegistry",
     "RateLimiter",
@@ -213,7 +270,10 @@ _OPTIONAL_EXPORTS: dict[str, tuple[str, tuple[str, ...]]] = {
     # --- heavy-SDK real implementations ---
     "CheckpointStore": ("checkpoint_store", ("CheckpointStore",)),
     "adaptive_scraper": ("adaptive_scraper", ("adaptive_scraper",)),
-    "agent_registry": ("agent_registry", ("AgentRegistry", "registry", "register_agent", "register_tool")),
+    "agent_registry": (
+        "agent_registry",
+        ("AgentRegistry", "registry", "register_agent", "register_tool"),
+    ),
     "VectorMemory": ("vector_memory", ("VectorMemory",)),
 }
 
@@ -272,6 +332,7 @@ def __getattr__(name: str) -> Any:
             if hasattr(module, attr):
                 return getattr(module, attr)
     raise AttributeError(f"module 'obase' has no attribute {name!r}")
+
 
 from .team_registry import TeamRegistry, make_team_config, make_team_member, make_task, make_message  # noqa: F401
 

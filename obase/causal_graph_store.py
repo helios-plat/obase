@@ -17,6 +17,7 @@ LLM — the causal structure is the system's ground truth, not a model's guess.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import networkx as nx
@@ -38,7 +39,9 @@ class CausalGraphStore:
         self.version: int = 1
 
     # ── 构建 ─────────────────────────────────────────────────────────
-    def add_node(self, node: str, *, p_fail: float | None = None, cond_fail: dict | None = None, **attrs: Any) -> None:
+    def add_node(
+        self, node: str, *, p_fail: float | None = None, cond_fail: dict | None = None, **attrs: Any
+    ) -> None:
         """Add a component node. Root nodes carry ``p_fail``; children carry
         ``cond_fail`` keyed by parent-state tuples (dict 或 JSON 序列化形态
         [[states, prob], ...] 均可)。"""
@@ -102,13 +105,35 @@ class CausalGraphStore:
     def node_attr(self, node: str) -> dict[str, Any]:
         return dict(self._g.nodes[node])
 
+    # ── 观测记录: 失败事件 (供经验估计 p_fail, 不做因果推断) ────────────
+    def record_failure(
+        self, node: str, message: str, result: dict[str, Any] | None = None, **extra: Any
+    ) -> None:
+        """Append an observed failure event for ``node`` (auto-created if absent).
+
+        This is bookkeeping, not causal inference — it never touches
+        p_fail/cond_fail. Consumers (e.g. Phase 2 diagnosis) read
+        ``node_attr(node)["failure_events"]`` to build empirical estimates.
+        """
+        if node not in self._g:
+            self.add_node(node)
+        events = self._g.nodes[node].setdefault("failure_events", [])
+        events.append({"ts": time.time(), "message": message, "result": result or {}, **extra})
+
+    def get_failures(self, node: str) -> list[dict[str, Any]]:
+        if node not in self._g:
+            return []
+        return list(self._g.nodes[node].get("failure_events", []))
+
     # ── 序列化 ───────────────────────────────────────────────────────
     def to_dict(self) -> dict[str, Any]:
         def _clean(attrs: dict[str, Any]) -> dict[str, Any]:
             out: dict[str, Any] = {}
             for k, v in attrs.items():
                 if k == "cond_fail":
-                    out[k] = [[list(kk), vv] for kk, vv in v.items()]  # [[父状态组合, 概率], ...] JSON 安全
+                    out[k] = [
+                        [list(kk), vv] for kk, vv in v.items()
+                    ]  # [[父状态组合, 概率], ...] JSON 安全
                 elif isinstance(v, tuple):
                     out[k] = list(v)
                 else:
