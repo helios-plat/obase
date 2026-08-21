@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
+import sqlite3
 import time
 import uuid
 from collections.abc import Callable, Coroutine
@@ -10,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
@@ -236,6 +238,154 @@ def _load_run_state(run_dir: Path) -> RunState:
     return RunState.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+class RunStateBackend(Protocol):
+    """Pluggable persistence for Runbook-driven RunState (start_runbook/runbook_goto/...).
+
+    Linear Pipeline runs (run_pipeline) are unaffected — they keep using
+    ``_save_run_state``/``_load_run_state`` against ``FS.run_dir`` directly.
+    """
+
+    def exists(self, run_id: str) -> bool: ...
+    def save(self, state: RunState) -> None: ...
+    def load(self, run_id: str) -> RunState | None: ...
+
+
+class FileRunStateBackend:
+    """Default backend: wraps the existing FS.run_dir()/run_state.json layout."""
+
+    def exists(self, run_id: str) -> bool:
+        return (FS.run_dir(run_id) / "run_state.json").exists()
+
+    def save(self, state: RunState) -> None:
+        run_dir = FS.run_dir(state.run_id)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        _save_run_state(state, run_dir)
+
+    def load(self, run_id: str) -> RunState | None:
+        run_dir = FS.run_dir(run_id)
+        if not (run_dir / "run_state.json").exists():
+            return None
+        return _load_run_state(run_dir)
+
+
+class SqliteRunStateBackend:
+    """SQLite backend: one row per run_id, RunState.to_dict() stored as a JSON blob.
+
+    Reuses RunState's own (de)serialization rather than a normalized schema —
+    any field added to RunState later round-trips here for free, and this
+    stays a genuine alternative persistence layer without a second, drifting
+    definition of "what a RunState looks like on disk".
+    """
+
+    def __init__(self, db_path: Path | str | None = None) -> None:
+        if db_path is None:
+            root = Path(
+                os.environ.get("THREE_O_RUN_STATE_DIR", Path.home() / ".local/state/3o/runs")
+            )
+            root.mkdir(parents=True, exist_ok=True)
+            db_path = root / "runs.db"
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
+    def _init_schema(self) -> None:
+        conn = self._connect()
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS runs ("
+                "run_id TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at REAL NOT NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def exists(self, run_id: str) -> bool:
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT 1 FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
+    def save(self, state: RunState) -> None:
+        payload = json.dumps(state.to_dict(), ensure_ascii=False, default=str)
+        conn = self._connect()
+        try:
+            conn.execute(
+                "INSERT INTO runs (run_id, state_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(run_id) DO UPDATE SET "
+                "state_json=excluded.state_json, updated_at=excluded.updated_at",
+                (state.run_id, payload, time.time()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def load(self, run_id: str) -> RunState | None:
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT state_json FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        return RunState.from_dict(json.loads(row[0]))
+
+
+def _require_state(backend: RunStateBackend, run_id: str) -> RunState:
+    state = backend.load(run_id)
+    if state is None:
+        raise FileNotFoundError(f"no run state found for run_id={run_id!r}")
+    return state
+
+
+_TERMINAL_STATES = ("completed", "blocked")
+
+
+def project_run_trajectory(state: RunState, context_store: Any, *, user_id: str = "veya") -> str:
+    """Project a finished run's transition history into HierarchicalContext.
+
+    Written to ``3o://user/{user_id}/memories/trajectories/{run_id}``. The L0
+    abstract is built mechanically (no LLM call) — good enough as a one-line
+    index; a caller wanting a richer summary can overwrite it afterward via
+    ``context_store.set_overview``.
+    """
+    uri = f"3o://user/{user_id}/memories/trajectories/{state.run_id}"
+    body = json.dumps(
+        {
+            "run_id": state.run_id,
+            "pipeline_name": state.pipeline_name,
+            "runbook_hash": state.runbook_hash,
+            "state": state.state,
+            "transitions": state.transitions,
+        },
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+    name = state.pipeline_name[:60]
+    n = len(state.transitions)
+    abstract = f"Run {state.run_id}: '{name}' ended {state.state} after {n} transitions."
+    context_store.write(uri, body, abstract=abstract)
+    return uri
+
+
+def _project_trajectory_if_terminal(state: RunState, context_store: Any | None) -> None:
+    """Best-effort: a failed trajectory write must not undo an already-persisted transition."""
+    if context_store is None or state.state not in _TERMINAL_STATES:
+        return
+    try:
+        project_run_trajectory(state, context_store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("trajectory_projection_failed", run_id=state.run_id, error=str(exc))
+
+
 def _filter_input(data: dict[str, Any], keys: list[str]) -> dict[str, Any]:
     return {k: data[k] for k in keys if k in data}
 
@@ -371,14 +521,19 @@ async def run_pipeline(
     return state
 
 
-def start_runbook(runbook: Runbook, run_id: str | None = None, resume: bool = True) -> RunState:
-    """Start (or resume) a Runbook-driven run. Reuses the Pipeline persistence path."""
+def start_runbook(
+    runbook: Runbook,
+    run_id: str | None = None,
+    resume: bool = True,
+    *,
+    backend: RunStateBackend | None = None,
+) -> RunState:
+    """Start (or resume) a Runbook-driven run. Defaults to the Pipeline's file persistence."""
+    backend = backend or FileRunStateBackend()
     run_id = run_id or str(uuid.uuid4())
-    run_dir = FS.run_dir(run_id)
-    state_path = run_dir / "run_state.json"
 
-    if resume and state_path.exists():
-        existing = _load_run_state(run_dir)
+    if resume and backend.exists(run_id):
+        existing = _require_state(backend, run_id)
         if existing.runbook_hash == runbook.content_hash():
             return existing
         raise StageContractViolation(
@@ -400,14 +555,16 @@ def start_runbook(runbook: Runbook, run_id: str | None = None, resume: bool = Tr
     state.entries[entry_id] = RunEntry(
         entry_id=entry_id, node_id=runbook.initial, entered_at=time.time()
     )
-    run_dir.mkdir(parents=True, exist_ok=True)
-    _save_run_state(state, run_dir)
+    backend.save(state)
     return state
 
 
-def runbook_current(runbook: Runbook, run_id: str) -> dict[str, Any]:
+def runbook_current(
+    runbook: Runbook, run_id: str, *, backend: RunStateBackend | None = None
+) -> dict[str, Any]:
     """Return the node the run is currently sitting in, plus the edges it may take."""
-    state = _load_run_state(FS.run_dir(run_id))
+    backend = backend or FileRunStateBackend()
+    state = _require_state(backend, run_id)
     node = runbook.nodes[state.current_node]
     return {
         "run_id": run_id,
@@ -427,15 +584,23 @@ def runbook_goto(
     hook_runner: Callable[[str, dict[str, Any]], Any] | None = None,
     agent_context: dict[str, Any] | None = None,
     causal_store: Any | None = None,
+    *,
+    backend: RunStateBackend | None = None,
+    context_store: Any | None = None,
 ) -> dict[str, Any]:
     """Attempt to transition the run from its current node to ``target``.
 
     Runs ``before_transfer`` checks first; a failing blocking check keeps the
     run at its current node and records the attempt (capped by
     ``edge.max_attempts``, after which the run is marked ``blocked``).
+
+    ``context_store`` (a ``HierarchicalContextStore``) is optional: when the
+    run lands in a terminal state (``completed``/``blocked``) its trajectory
+    is projected into ``3o://user/.../memories/trajectories/{run_id}`` —
+    see ``project_run_trajectory``.
     """
-    run_dir = FS.run_dir(run_id)
-    state = _load_run_state(run_dir)
+    backend = backend or FileRunStateBackend()
+    state = _require_state(backend, run_id)
     if state.state != "running":
         return {"ok": False, "reason": f"invalid state: {state.state}"}
 
@@ -451,7 +616,8 @@ def runbook_goto(
     attempts = entry.attempts.get(edge_key, 0)
     if attempts >= edge.max_attempts:
         state.state = "blocked"
-        _save_run_state(state, run_dir)
+        backend.save(state)
+        _project_trajectory_if_terminal(state, context_store)
         return {"ok": False, "reason": "max_attempts exceeded", "blocked": True}
 
     node = runbook.nodes[state.current_node]
@@ -464,7 +630,7 @@ def runbook_goto(
         if chk.blocking and not result.get("passed", False):
             entry.attempts[edge_key] = attempts + 1
             entry.checks.extend(check_results)
-            _save_run_state(state, run_dir)
+            backend.save(state)
             record_failure = getattr(causal_store, "record_failure", None)
             if record_failure is not None:
                 record_failure(state.current_node, result.get("message", ""), result)
@@ -507,7 +673,8 @@ def runbook_goto(
     if not any(e.from_node == target for e in runbook.edges):
         state.state = "completed"
 
-    _save_run_state(state, run_dir)
+    backend.save(state)
+    _project_trajectory_if_terminal(state, context_store)
     return {
         "ok": True,
         "from": edge.from_node,
@@ -517,15 +684,20 @@ def runbook_goto(
     }
 
 
-def register_dynamic_check(run_id: str, check: Check) -> None:
+def register_dynamic_check(
+    run_id: str, check: Check, *, backend: RunStateBackend | None = None
+) -> None:
     """Attach a check to the run's current entry, evaluated on the next ``runbook_goto``."""
-    run_dir = FS.run_dir(run_id)
-    state = _load_run_state(run_dir)
+    backend = backend or FileRunStateBackend()
+    state = _require_state(backend, run_id)
     entry = state.entries[state.current_entry_id]
     entry.dynamic_checks.append(check)
-    _save_run_state(state, run_dir)
+    backend.save(state)
 
 
-def runbook_history(run_id: str, tail: int = 50) -> list[dict[str, Any]]:
-    state = _load_run_state(FS.run_dir(run_id))
+def runbook_history(
+    run_id: str, tail: int = 50, *, backend: RunStateBackend | None = None
+) -> list[dict[str, Any]]:
+    backend = backend or FileRunStateBackend()
+    state = _require_state(backend, run_id)
     return state.transitions[-tail:]

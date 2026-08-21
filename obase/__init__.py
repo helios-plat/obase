@@ -54,8 +54,8 @@ from obase.hierarchical_context import (
     retrieve,
 )
 from obase.loop_event_store import (
-    AppendOnlyEventStore,
     EVENT_SCHEMA_VERSION,
+    AppendOnlyEventStore,
     LoopStoreError,
     QuotaTracker,
     VerifyResult,
@@ -65,12 +65,16 @@ from obase.orchestrator import (
     Check,
     CheckType,
     Edge,
+    FileRunStateBackend,
     Node,
     Pipeline,
     Runbook,
     RunEntry,
     RunState,
+    RunStateBackend,
+    SqliteRunStateBackend,
     Stage,
+    project_run_trajectory,
     register_dynamic_check,
     run_pipeline,
     runbook_current,
@@ -127,6 +131,9 @@ __all__ = [
     "retrieve",
     "Pipeline",
     "RunState",
+    "RunStateBackend",
+    "FileRunStateBackend",
+    "SqliteRunStateBackend",
     "Stage",
     "run_pipeline",
     "Check",
@@ -135,6 +142,7 @@ __all__ = [
     "Node",
     "Runbook",
     "RunEntry",
+    "project_run_trajectory",
     "register_dynamic_check",
     "runbook_current",
     "runbook_goto",
@@ -334,19 +342,25 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module 'obase' has no attribute {name!r}")
 
 
-from .team_registry import TeamRegistry, make_team_config, make_team_member, make_task, make_message  # noqa: F401
-
-from .debounced_memory_queue import DebouncedMemoryQueue  # noqa: F401
-
-from .support_bundle_pack import support_bundle_pack  # noqa: F401
-
-from .knowledge_store import KnowledgeStore  # noqa: F401
-from .plugin_registry import PluginRegistry  # noqa: F401
-
 # ── Phase 2: 认知因果 / 蜜罐博弈 基础设施 ──────────────────────────
 from .causal_graph_store import (  # noqa: F401
     CausalGraphError,
     CausalGraphStore,
     get_runtime_causal_store,
 )
-from .local_sandbox_pool import HoneypotAccessError, LocalSandboxPool, SandboxExecutionResult  # noqa: F401
+from .debounced_memory_queue import DebouncedMemoryQueue  # noqa: F401
+from .knowledge_store import KnowledgeStore  # noqa: F401
+from .local_sandbox_pool import (  # noqa: F401
+    HoneypotAccessError,
+    LocalSandboxPool,
+    SandboxExecutionResult,
+)
+from .plugin_registry import PluginRegistry  # noqa: F401
+from .support_bundle_pack import support_bundle_pack  # noqa: F401
+from .team_registry import (  # noqa: F401
+    TeamRegistry,
+    make_message,
+    make_task,
+    make_team_config,
+    make_team_member,
+)
