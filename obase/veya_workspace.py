@@ -35,3 +35,6 @@ class TaskNode(BaseModel):
         "pending", "ready", "running", "verifying", "completed", "blocked", "cancelled"
     ] = "pending"
     retries: int = 0
+    # smart-ralph [P] marker: 此任务与其他无显式依赖的 [P] 任务可并行执行
+    # 对标 mattpocock/skills: task-planner 标注哪些任务可安全并行
+    parallel: bool = False
