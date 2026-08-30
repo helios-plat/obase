@@ -18,6 +18,15 @@ __version__ = "0.31.0"
 
 # --- core imports: stdlib-only or light deps (structlog, yaml, httpx, pydantic) ---
 from obase.bootstrap import bootstrap, load_env
+from obase.action import (
+    ActionDecision,
+    ActionEffect,
+    ActionRequest,
+    ActionVerdict,
+    AuditRecord,
+    PolicyRule,
+    redact_value,
+)
 from obase.cache import Cache, DistributedLock, cached
 from obase.cost_tracker import (
     CostBreakdown,
@@ -101,6 +110,13 @@ __all__ = [
     "__version__",
     "bootstrap",
     "load_env",
+    "ActionDecision",
+    "ActionEffect",
+    "ActionRequest",
+    "ActionVerdict",
+    "AuditRecord",
+    "PolicyRule",
+    "redact_value",
     "uuid7",
     "Cache",
     "cached",
