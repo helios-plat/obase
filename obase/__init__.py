@@ -28,6 +28,7 @@ from obase.action import (
     redact_value,
 )
 from obase.cache import Cache, DistributedLock, cached
+from obase.computer import ComputerHandle, ComputerProfile
 from obase.cost_tracker import (
     CostBreakdown,
     CostTracker,
@@ -117,6 +118,8 @@ __all__ = [
     "AuditRecord",
     "PolicyRule",
     "redact_value",
+    "ComputerHandle",
+    "ComputerProfile",
     "uuid7",
     "Cache",
     "cached",
