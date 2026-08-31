@@ -101,6 +101,14 @@ from obase.orchestrator import (
     start_runbook,
 )
 from obase.provider_registry import ProviderRegistry
+from obase.provider_routing import (
+    ModelSpec,
+    Pricing,
+    ProviderCallRequest,
+    ProviderHealth,
+    ProviderSpec,
+    UsageRecord,
+)
 from obase.rate_limit import RateLimiter, RateLimitRegistry
 from obase.runbook_loader import RunbookParseError, load_runbook_yaml, parse_runbook
 from obase.runbook_runtime import (
@@ -190,6 +198,12 @@ __all__ = [
     "load_runbook_yaml",
     "parse_runbook",
     "ProviderRegistry",
+    "ModelSpec",
+    "Pricing",
+    "ProviderCallRequest",
+    "ProviderHealth",
+    "ProviderSpec",
+    "UsageRecord",
     "RateLimitRegistry",
     "RateLimiter",
     "ToolMeta",
