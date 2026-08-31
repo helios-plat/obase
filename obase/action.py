@@ -32,6 +32,10 @@ _SECRET_WORDS = frozenset(
         "private_key",
         "secret",
         "token",
+        "api_key",
+        "access_key",
+        "client_secret",
+        "webhook",
     }
 )
 

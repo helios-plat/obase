@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .mcp_client import McpClientHandle, McpClientRegistry
 
@@ -45,12 +44,12 @@ def _decode_frames(buf: bytes) -> tuple[list[dict[str, Any]], bytes]:
         body_start = head_end + 4
         if len(rest) < body_start + length:
             break
-        body = rest[body_start:body_start + length]
+        body = rest[body_start : body_start + length]
         try:
             frames.append(json.loads(body))
         except json.JSONDecodeError:
             pass  # 坏帧丢弃, 不阻断后续
-        rest = rest[body_start + length:]
+        rest = rest[body_start + length :]
     return frames, rest
 
 
@@ -136,7 +135,7 @@ class StdioMcpClient:
             try:
                 self._proc.terminate()
                 await asyncio.wait_for(self._proc.wait(), timeout=2.0)
-            except (asyncio.TimeoutError, ProcessLookupError):
+            except (TimeoutError, ProcessLookupError):
                 if self._proc and self._proc.returncode is None:
                     self._proc.kill()
         self._started = False
@@ -157,49 +156,64 @@ class StdioMcpClient:
 
     async def list_tools(self) -> list[dict]:
         res = await self._request("tools/list", {}, timeout=self.request_timeout)
-        return (res or {}).get("tools", [])
+        return cast(list[dict], (res or {}).get("tools", []))
 
     async def call_tool(self, name: str, args: dict) -> Any:
         res = await self._request(
             "tools/call", {"name": name, "arguments": args}, timeout=self.request_timeout
         )
         if isinstance(res, dict) and res.get("isError"):
-            raise StdioMcpError(f"tool {name!r} 返回错误: {res.get('content')}")
+            raise StdioMcpError(f"tool {name!r} 返回错误")
         return res
 
     # ── 内部 ───────────────────────────────────────────────────────────
 
     async def _request(self, method: str, params: dict, *, timeout: float) -> Any:
         if not self.alive:
-            raise StdioMcpError(f"{self.name}: 进程已退出 (rc={self._proc.returncode if self._proc else '?'})")
+            return_code = self._proc.returncode if self._proc else "?"
+            raise StdioMcpError(f"{self.name}: 进程已退出 (rc={return_code})")
+        writer = self._writer
+        if writer is None:
+            raise StdioMcpError(f"{self.name}: 写入通道未初始化")
         async with self._lock:
             rid = self._next_id
             self._next_id += 1
             fut: asyncio.Future = asyncio.get_running_loop().create_future()
             self._pending[rid] = fut
             if self.line_delimited:
-                self._writer.write(
-                    json.dumps({"jsonrpc": "2.0", "id": rid,
-                                "method": method, "params": params},
-                               ensure_ascii=False).encode("utf-8") + b"\n")
+                writer.write(
+                    json.dumps(
+                        {"jsonrpc": "2.0", "id": rid, "method": method, "params": params},
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    + b"\n"
+                )
             else:
-                self._writer.write(_encode_frame({"jsonrpc": "2.0", "id": rid,
-                                                  "method": method, "params": params}))
-            await self._writer.drain()
+                writer.write(
+                    _encode_frame({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+                )
+            await writer.drain()
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise StdioMcpError(f"{self.name}: {method} 超时 ({timeout}s)") from None
 
     async def _notify(self, method: str, params: dict | None = None) -> None:
+        writer = self._writer
+        if writer is None:
+            raise StdioMcpError(f"{self.name}: 写入通道未初始化")
         if self.line_delimited:
-            self._writer.write(
-                json.dumps({"jsonrpc": "2.0", "method": method,
-                            "params": params or {}}, ensure_ascii=False).encode("utf-8") + b"\n")
+            writer.write(
+                json.dumps(
+                    {"jsonrpc": "2.0", "method": method, "params": params or {}}, ensure_ascii=False
+                ).encode("utf-8")
+                + b"\n"
+            )
         else:
-            self._writer.write(_encode_frame({"jsonrpc": "2.0", "method": method,
-                                              "params": params or {}}))
-        await self._writer.drain()
+            writer.write(
+                _encode_frame({"jsonrpc": "2.0", "method": method, "params": params or {}})
+            )
+        await writer.drain()
 
     async def _read_loop(self) -> None:
         try:
@@ -235,8 +249,7 @@ class StdioMcpClient:
             fut = self._pending.pop(frame["id"], None)
             if fut and not fut.done():
                 if "error" in frame:
-                    fut.set_exception(StdioMcpError(
-                        f"{self.name}: {frame['error']}"))
+                    fut.set_exception(StdioMcpError(f"{self.name}: MCP 请求失败"))
                 else:
                     fut.set_result(frame.get("result"))
 

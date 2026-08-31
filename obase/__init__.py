@@ -120,6 +120,16 @@ from obase.runbook_runtime import (
 )
 from obase.scheduler import IntradayPollScheduler
 from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
+from obase.tool_governance import (
+    CredentialRef,
+    Grant,
+    MCPServerSpec,
+    SecretRef,
+    ToolCallRequest,
+    ToolCallResult,
+    ToolSpec,
+    redact_payload,
+)
 from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
 
@@ -210,6 +220,14 @@ __all__ = [
     "ToolRegistry",
     "ToolRegistryConflict",
     "register_tool",
+    "CredentialRef",
+    "Grant",
+    "MCPServerSpec",
+    "SecretRef",
+    "ToolCallRequest",
+    "ToolCallResult",
+    "ToolSpec",
+    "redact_payload",
     "Trail",
     "load_trail",
     "query_trail",

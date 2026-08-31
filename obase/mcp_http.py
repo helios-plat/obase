@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -27,7 +27,10 @@ def _parse_sse_or_json(body: str) -> dict[str, Any]:
     """解析响应: SSE 流 (event: message + data:) 或纯 JSON。"""
     text = body.strip()
     if text.startswith("{"):
-        return json.loads(text)
+        try:
+            return cast(dict[str, Any], json.loads(text))
+        except json.JSONDecodeError as exc:
+            raise HttpMcpError("MCP JSON 响应无效") from exc
     # SSE: 取所有 data: 行拼接 (多帧时最后一帧是结果)
     payload = None
     for line in text.splitlines():
@@ -35,8 +38,11 @@ def _parse_sse_or_json(body: str) -> dict[str, Any]:
         if line.startswith("data:"):
             payload = line[5:].strip()
     if payload is None:
-        raise HttpMcpError(f"无法解析 MCP 响应: {body[:200]}")
-    return json.loads(payload)
+        raise HttpMcpError("无法解析 MCP 响应")
+    try:
+        return cast(dict[str, Any], json.loads(payload))
+    except json.JSONDecodeError as exc:
+        raise HttpMcpError("MCP SSE 响应无效") from exc
 
 
 class StreamableHttpMcpClient:
@@ -94,8 +100,7 @@ class StreamableHttpMcpClient:
             },
         )
         if resp.status_code not in (200, 202):
-            raise HttpMcpError(
-                f"{self.name}: initialize 失败 (HTTP {resp.status_code}): {resp.text[:200]}")
+            raise HttpMcpError(f"{self.name}: initialize 失败 (HTTP {resp.status_code})")
         sid = resp.headers.get("Mcp-Session-Id")
         if sid:
             self._session_id = sid
@@ -108,19 +113,23 @@ class StreamableHttpMcpClient:
         self._started = False
 
     def health(self) -> dict[str, Any]:
-        return {"name": self.name, "started": self._started,
-                "session": bool(self._session_id), "endpoint": self.endpoint}
+        return {
+            "name": self.name,
+            "started": self._started,
+            "session": bool(self._session_id),
+            "endpoint": self.endpoint,
+        }
 
     # ── McpClientHandle 协议 ───────────────────────────────────────────
 
     async def list_tools(self) -> list[dict]:
         res = await self._request("tools/list", {})
-        return (res or {}).get("tools", [])
+        return cast(list[dict], (res or {}).get("tools", []))
 
     async def call_tool(self, name: str, args: dict) -> Any:
         res = await self._request("tools/call", {"name": name, "arguments": args})
         if isinstance(res, dict) and res.get("isError"):
-            raise HttpMcpError(f"{self.name}: tool {name!r} 返回错误: {res.get('content')}")
+            raise HttpMcpError(f"{self.name}: tool {name!r} 返回错误")
         return res
 
     # ── 内部 ───────────────────────────────────────────────────────────
@@ -140,17 +149,16 @@ class StreamableHttpMcpClient:
         if self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         resp = await self._client.post(
-            self.endpoint, headers=headers,
+            self.endpoint,
+            headers=headers,
             json={"jsonrpc": "2.0", "id": rid, "method": method, "params": params},
         )
         if resp.status_code not in (200, 202):
-            raise HttpMcpError(
-                f"{self.name}: {method} 失败 (HTTP {resp.status_code}): {resp.text[:200]}")
+            raise HttpMcpError(f"{self.name}: {method} 失败 (HTTP {resp.status_code})")
         payload = _parse_sse_or_json(resp.text)
         if "error" in payload:
-            raise HttpMcpError(f"{self.name}: {payload['error']}")
+            raise HttpMcpError(f"{self.name}: {method} 返回 MCP 错误")
         return payload.get("result")
 
 
-__all__ = ["HttpMcpError", "StreamableHttpMcpClient", "McpClientRegistry",
-           "McpClientHandle"]
+__all__ = ["HttpMcpError", "StreamableHttpMcpClient", "McpClientRegistry", "McpClientHandle"]
