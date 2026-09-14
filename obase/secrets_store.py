@@ -14,7 +14,8 @@ import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet
-from oprim._fernet_vault import (
+
+from obase._fernet_vault import (
     fernet_dump,
     fernet_load,
     fernet_load_or_create_key,
