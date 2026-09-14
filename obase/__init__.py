@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 __version__ = "0.18.0"
+__3o_canonical_exports__ = frozenset({"ProviderRegistry", "PgPool", "run_pipeline"})
 
 # Public-package contract.  Consumers use this data for compatibility checks;
 # it deliberately describes stable root exports rather than application code.
