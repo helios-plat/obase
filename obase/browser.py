@@ -108,6 +108,10 @@ class BrowserAdapter(Protocol):
 
     def screenshot(self, handle: BrowserSessionHandle, **kwargs: Any) -> Any: ...
 
+    def scroll(self, handle: BrowserSessionHandle, **kwargs: Any) -> Any: ...
+
+    def wait(self, handle: BrowserSessionHandle, milliseconds: int) -> Any: ...
+
 
 @dataclass
 class _PlaywrightRecord:
@@ -424,6 +428,35 @@ class PlaywrightBrowserAdapter:
                 screenshot_base64=base64.b64encode(cast(bytes, screenshot)).decode("ascii"),
                 path=str(kwargs.get("path") or ""),
             )
+        except Exception as exc:
+            return self._failed(operation, exc)
+
+    async def scroll(
+        self, handle: BrowserSessionHandle | Mapping[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
+        operation = "scroll"
+        try:
+            record = self._page(handle)
+            x = int(kwargs.get("x", 0))
+            y = int(kwargs.get("y", 0))
+            if x == 0 and y == 0:
+                raise ValueError("scroll requires a non-zero x or y")
+            await record.page.evaluate("([dx, dy]) => window.scrollBy(dx, dy)", [x, y])
+            return self._result(record, operation, x=x, y=y)
+        except Exception as exc:
+            return self._failed(operation, exc)
+
+    async def wait(
+        self, handle: BrowserSessionHandle | Mapping[str, Any], milliseconds: int
+    ) -> dict[str, Any]:
+        operation = "wait"
+        try:
+            record = self._page(handle)
+            duration = int(milliseconds)
+            if duration < 0 or duration > 30_000:
+                raise ValueError("milliseconds must be between 0 and 30000")
+            await record.page.wait_for_timeout(duration)
+            return self._result(record, operation, milliseconds=duration)
         except Exception as exc:
             return self._failed(operation, exc)
 
