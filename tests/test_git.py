@@ -28,6 +28,13 @@ async def test_run_git_timeout(tmp_path):
     with pytest.raises(TimeoutError):
         await run_git(["log", "--all"], cwd=tmp_path, timeout=0.000001)
 
+
+@pytest.mark.asyncio
+async def test_run_git_passes_stdin(tmp_path):
+    result = await run_git(["hash-object", "--stdin"], cwd=tmp_path, input_text="payload")
+    assert result.ok
+    assert result.stdout.strip() == "47d05ff6403c8e6c3cf635ea6eb9263738432773"
+
 @pytest.mark.asyncio
 async def test_gitresult_ok_property(tmp_path):
     await run_git(["init"], cwd=tmp_path)
