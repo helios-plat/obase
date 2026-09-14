@@ -7,6 +7,7 @@ Install the optional extra to use this module::
 hmmlearn is imported lazily inside each method so the module can be imported
 without the optional dependency installed.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -101,9 +102,7 @@ class HmmlearnRuntime:
 
         _model = model.get("_model")
         if _model is None:
-            raise ValueError(
-                "model dict is missing '_model' key — pass the dict returned by fit()"
-            )
+            raise ValueError("model dict is missing '_model' key — pass the dict returned by fit()")
 
         obs = np.array(observations, dtype=float)
         if obs.ndim == 1:

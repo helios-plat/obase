@@ -99,7 +99,7 @@ async def retry_with_backoff(
         except retryable as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
-                delay = min(base_delay * (2.0 ** attempt), max_delay)
+                delay = min(base_delay * (2.0**attempt), max_delay)
                 await asyncio.sleep(delay)
         except Exception:
             raise  # non-retryable: propagate immediately

@@ -1,4 +1,5 @@
 """signal_data_registry — Unified data source registry for signal providers."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

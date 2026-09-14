@@ -1,4 +1,5 @@
 """Tests for obase.workflow_engine."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,9 +23,7 @@ class TestTopologicalSort:
         assert layers == [["A"]]
 
     def test_linear_chain(self):
-        layers = WorkflowEngine.topological_sort(
-            ["A", "B", "C"], [("A", "B"), ("B", "C")]
-        )
+        layers = WorkflowEngine.topological_sort(["A", "B", "C"], [("A", "B"), ("B", "C")])
         assert layers == [["A"], ["B"], ["C"]]
 
     def test_topological_sort_correct_layers(self):
@@ -69,14 +68,10 @@ class TestCycleDetection:
 
     def test_triangle_cycle_raises(self):
         with pytest.raises(CycleError):
-            WorkflowEngine.topological_sort(
-                ["A", "B", "C"], [("A", "B"), ("B", "C"), ("C", "A")]
-            )
+            WorkflowEngine.topological_sort(["A", "B", "C"], [("A", "B"), ("B", "C"), ("C", "A")])
 
     def test_acyclic_graph_no_raise(self):
-        WorkflowEngine.topological_sort(
-            ["A", "B", "C"], [("A", "B"), ("A", "C")]
-        )  # must not raise
+        WorkflowEngine.topological_sort(["A", "B", "C"], [("A", "B"), ("A", "C")])  # must not raise
 
     def test_detect_cycle_standalone(self):
         with pytest.raises(CycleError):
@@ -117,6 +112,7 @@ class TestExecute:
 
     def test_rollback_on_error(self):
         """on_error='rollback' must raise WorkflowExecutionError on failure."""
+
         async def _run():
             nodes = ["A", "B"]
             edges = [("A", "B")]
@@ -135,6 +131,7 @@ class TestExecute:
 
     def test_continue_on_error(self):
         """on_error='continue' — failed node stored as exception, rest proceeds."""
+
         async def _run():
             nodes = ["A", "B", "C"]
             edges = [("A", "B"), ("A", "C")]
@@ -175,7 +172,10 @@ class TestExecute:
     def test_invalid_on_error_raises(self):
         async def _run():
             layers = [["A"]]
-            async def executor(n, u): return n
+
+            async def executor(n, u):
+                return n
+
             await WorkflowEngine.execute(layers, executor, on_error="INVALID")
 
         with pytest.raises(ValueError):
@@ -183,7 +183,9 @@ class TestExecute:
 
     def test_empty_layers(self):
         async def _run():
-            async def executor(n, u): return n
+            async def executor(n, u):
+                return n
+
             return await WorkflowEngine.execute([], executor)
 
         results = asyncio.run(_run())

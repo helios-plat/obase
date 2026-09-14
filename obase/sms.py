@@ -10,6 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 async def send_otp(phone: str) -> str:
     """发送短信验证码。开发环境下固定返回 123456。"""
     # 模拟网络延迟
@@ -17,6 +18,7 @@ async def send_otp(phone: str) -> str:
     logger.info(f"Dev Mock SMS: Sent OTP {code} to {phone}")
     print(f"DEBUG: Sent OTP {code} to {phone}")
     return code
+
 
 async def verify_otp(phone: str, code: str) -> bool:
     """校验验证码。开发环境下固定校验 123456。"""

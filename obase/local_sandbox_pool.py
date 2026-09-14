@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import json
 import os
-import resource
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -122,7 +120,10 @@ def _apply_limits():
 _apply_limits()
 
 # ── 执行被测代码 ────────────────────────────────────────────────────
-result = {{"honeypot_access": [], "network_attempt": False, "stdout": "", "exit_code": 0, "error": None}}
+result = {{
+    "honeypot_access": [], "network_attempt": False, "stdout": "",
+    "exit_code": 0, "error": None,
+}}
 try:
     _user_code = {code!r}
     exec(_user_code, {{"__name__": "__honeypot_probe__"}})
@@ -205,8 +206,12 @@ class LocalSandboxPool:
         except subprocess.TimeoutExpired as exc:
             timed_out = True
             exit_code = 124
-            stdout = (exc.stdout or "").decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            stderr = (exc.stderr or "").decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            stdout = (
+                (exc.stdout or "").decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            )
+            stderr = (
+                (exc.stderr or "").decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            )
 
         duration_ms = int((time.monotonic() - started) * 1000)
 
@@ -225,8 +230,9 @@ class LocalSandboxPool:
             # 超时被 SIGKILL → wrapper 的 finally 未执行, payload 不可用。
             # 但 audit hook 已把 NETWORK_ATTEMPT 写进 stdout — 扫描取证,
             # 否则网络外发攻击(connect 挂起拖到超时)会漏报 hostile。
-            network_attempt = "NETWORK_ATTEMPT" in (stdout or "") or \
-                              "NETWORK_ATTEMPT" in (stderr or "")
+            network_attempt = "NETWORK_ATTEMPT" in (stdout or "") or "NETWORK_ATTEMPT" in (
+                stderr or ""
+            )
 
         return SandboxExecutionResult(
             exit_code=exit_code,

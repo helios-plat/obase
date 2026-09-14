@@ -1,4 +1,5 @@
 """Timeseries writer — fire-and-forget writes to hypertables."""
+
 from __future__ import annotations
 
 import json
@@ -127,9 +128,7 @@ async def write_fusion_ts(
 
         breached = [r for r in redlines if r.get("status") == "breached"]
         has_warning = any(r.get("status") == "warning" for r in redlines)
-        redline_status = (
-            "breached" if breached else ("warning" if has_warning else "pass")
-        )
+        redline_status = "breached" if breached else ("warning" if has_warning else "pass")
 
         dim_params = [
             {
@@ -211,18 +210,20 @@ async def write_timeframes_ts(
         for frame_key, fd in all_frames.items():
             key_ma = fd.get("key_ma") or {}
             ind = fd.get("indicator") or {}
-            frame_params.append({
-                "time": now,
-                "symbol": symbol,
-                "frame": frame_key,
-                "current_price": fd.get("current_price"),
-                "key_ma_label": key_ma.get("label"),
-                "key_ma_value": key_ma.get("value"),
-                "key_ma_deviation_pct": key_ma.get("deviation_pct"),
-                "trend": fd.get("trend"),
-                "indicator_name": ind.get("name"),
-                "indicator_value": ind.get("value"),
-            })
+            frame_params.append(
+                {
+                    "time": now,
+                    "symbol": symbol,
+                    "frame": frame_key,
+                    "current_price": fd.get("current_price"),
+                    "key_ma_label": key_ma.get("label"),
+                    "key_ma_value": key_ma.get("value"),
+                    "key_ma_deviation_pct": key_ma.get("deviation_pct"),
+                    "trend": fd.get("trend"),
+                    "indicator_name": ind.get("name"),
+                    "indicator_value": ind.get("value"),
+                }
+            )
 
         strategic = tf1.get("strategic", {})
         trend = tf2.get("trend", {})
@@ -238,15 +239,9 @@ async def write_timeframes_ts(
                     "symbol": symbol,
                     "state": strategic.get("state"),
                     "confidence": strategic.get("confidence"),
-                    "triggers_json": json.dumps(
-                        strategic.get("triggers", [])
-                    ),
-                    "available_sources": strategic.get(
-                        "available_sources", []
-                    ),
-                    "unavailable_sources": strategic.get(
-                        "unavailable_sources", []
-                    ),
+                    "triggers_json": json.dumps(strategic.get("triggers", [])),
+                    "available_sources": strategic.get("available_sources", []),
+                    "unavailable_sources": strategic.get("unavailable_sources", []),
                     "candidate_state": strategic.get("candidate_state"),
                     "confirmed_state": strategic.get("confirmed_state"),
                     "sustained_days": strategic.get("sustained_days", 0),
@@ -278,9 +273,7 @@ async def write_timeframes_ts(
             )
             await session.commit()
     except Exception:
-        log.warning(
-            "ts_write_timeframes_failed symbol=%s", symbol, exc_info=True
-        )
+        log.warning("ts_write_timeframes_failed symbol=%s", symbol, exc_info=True)
 
 
 async def write_regime_ts(
@@ -306,11 +299,7 @@ async def write_regime_ts(
     """
     try:
         raw_as_of = result.get("as_of")
-        now = (
-            datetime.fromisoformat(raw_as_of)
-            if isinstance(raw_as_of, str)
-            else raw_as_of
-        )
+        now = datetime.fromisoformat(raw_as_of) if isinstance(raw_as_of, str) else raw_as_of
         components = result.get("components") or {}
 
         async with session_factory as session:
@@ -330,6 +319,4 @@ async def write_regime_ts(
             )
             await session.commit()
     except Exception:
-        log.warning(
-            "ts_write_regime_failed symbol=%s", symbol, exc_info=True
-        )
+        log.warning("ts_write_regime_failed symbol=%s", symbol, exc_info=True)

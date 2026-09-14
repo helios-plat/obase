@@ -42,9 +42,11 @@ class TestNoSilentFallback:
     def test_budget_exceeded_raises_not_continues(self):
         """BudgetExceeded is raised by record(), not silently skipped."""
         from obase.cost_tracker import PricingEntry
+
         table = PricingTable(
-            entries=[PricingEntry(category="a", provider="b", model_or_tier="c",
-                                  unit="u", price_usd=1.0)]
+            entries=[
+                PricingEntry(category="a", provider="b", model_or_tier="c", unit="u", price_usd=1.0)
+            ]
         )
         ct = CostTracker(pricing_table=table, budget_usd=0.5, strict_pricing=True)
         with pytest.raises(BudgetExceeded):
@@ -79,5 +81,6 @@ class TestNoSilentFallback:
         """RateLimitRegistry.get on unknown name raises OBaseError, not returns None."""
         from obase.exceptions import OBaseError
         from obase.rate_limit import RateLimitRegistry
+
         with pytest.raises(OBaseError, match="not found"):
             RateLimitRegistry.get("unknown-limiter-xyz")

@@ -23,8 +23,10 @@ from obase.orchestrator import Pipeline, Stage, run_pipeline
 
 bootstrap(auto_discover_providers=False)
 
+
 async def my_stage(data: dict, ctx) -> dict:
     return {"result": data["input"] * 2}
+
 
 pipeline = Pipeline("demo", [Stage("double", my_stage)])
 state = await run_pipeline(pipeline, initial_data={"input": 21})

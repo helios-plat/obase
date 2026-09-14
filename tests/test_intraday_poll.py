@@ -26,7 +26,7 @@ class TestIntradayPollScheduler:
     def test_handler_exception_isolated(self) -> None:
         s = IntradayPollScheduler()
         s.register_window(name="good", trigger_time=time(10, 0), handler=lambda: "ok")
-        s.register_window(name="bad", trigger_time=time(10, 0), handler=lambda: 1/0)
+        s.register_window(name="bad", trigger_time=time(10, 0), handler=lambda: 1 / 0)
         s.start()
         now = datetime(2026, 5, 25, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
         results = s.tick(now=now)

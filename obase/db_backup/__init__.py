@@ -1,4 +1,5 @@
 """db_backup — Database backup utilities."""
+
 from __future__ import annotations
 
 import time
@@ -8,6 +9,7 @@ from pathlib import Path
 class DbBackupError(Exception):
     """Base error for db_backup."""
 
+
 class DbBackup:
     """Manage database backup operations.
 
@@ -15,6 +17,7 @@ class DbBackup:
         >>> b = DbBackup(backup_dir=Path("/tmp/backups"))
         >>> b.create(db_name="helios")
     """
+
     def __init__(self, *, backup_dir: Path) -> None:
         self._backup_dir = backup_dir
         self._backup_dir.mkdir(parents=True, exist_ok=True)

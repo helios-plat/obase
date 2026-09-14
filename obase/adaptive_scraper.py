@@ -60,6 +60,7 @@ def adaptive_scraper(
             content = html
             if selector:
                 from lxml import html as lhtml
+
                 tree = lhtml.fromstring(html)
                 content = " ".join(tree.xpath(f"//{selector}//text()"))
         finally:
@@ -69,8 +70,8 @@ def adaptive_scraper(
 
     return {
         "url": url,
-        "content": content[:ctx.get("max_chars", 50000)],
-        "html": str(html)[:ctx.get("max_chars", 50000)] if html else "",
+        "content": content[: ctx.get("max_chars", 50000)],
+        "html": str(html)[: ctx.get("max_chars", 50000)] if html else "",
         "status": "fetched",
         "metadata": {
             "fetched_at": __import__("time").time(),

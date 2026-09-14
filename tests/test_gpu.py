@@ -24,11 +24,13 @@ class MockModelProvider:
     def is_loaded(self) -> bool:
         return self._loaded
 
+
 @pytest.mark.asyncio
 async def test_protocol_check():
     """Test if MockModelProvider matches the LocalModelProvider protocol."""
     mock = MockModelProvider("test")
     assert isinstance(mock, LocalModelProvider)
+
 
 @pytest.mark.asyncio
 async def test_acquire_vram_zero():
@@ -36,21 +38,23 @@ async def test_acquire_vram_zero():
     scheduler = GpuScheduler()
     # Mock the lock to track calls
     scheduler._vram_lock = MagicMock(wraps=asyncio.Lock())
-    
+
     async with scheduler.acquire(0):
         pass
-    
+
     assert scheduler._vram_lock.acquire.call_count == 0
+
 
 @pytest.mark.asyncio
 async def test_acquire_vram_positive():
     """acquire vram>0 should acquire the lock."""
     scheduler = GpuScheduler()
-    
+
     async with scheduler.acquire(100):
         assert scheduler._vram_lock.locked()
-    
+
     assert not scheduler._vram_lock.locked()
+
 
 @pytest.mark.asyncio
 async def test_acquire_serial():
@@ -65,9 +69,10 @@ async def test_acquire_serial():
             order.append(f"{name}_end")
 
     await asyncio.gather(task("A", 0.1), task("B", 0.05))
-    
+
     # B should wait for A to finish
     assert order == ["A_start", "A_end", "B_start", "B_end"]
+
 
 @pytest.mark.asyncio
 async def test_unload_all_except():
@@ -76,22 +81,23 @@ async def test_unload_all_except():
     m1 = MockModelProvider("m1")
     m2 = MockModelProvider("m2")
     m3 = MockModelProvider("m3")
-    
+
     registry.register("m1", m1)
     registry.register("m2", m2)
     registry.register("m3", m3)
-    
+
     await m1.load()
     await m2.load()
     await m3.load()
-    
+
     await registry.unload_all_except("m1")
-    
+
     assert m1.is_loaded() is True
     assert m2.is_loaded() is False
     assert m3.is_loaded() is False
     assert m2.unload_called == 1
     assert m3.unload_called == 1
+
 
 @pytest.mark.asyncio
 async def test_ensure_available_trigger_unload():
@@ -101,24 +107,25 @@ async def test_ensure_available_trigger_unload():
     m2 = MockModelProvider("m2")
     registry.register("m1", m1)
     registry.register("m2", m2)
-    
+
     await m2.load()
-    
+
     scheduler = GpuScheduler(registry=registry)
-    with patch.object(scheduler, 'free_vram_mb', new_callable=AsyncMock) as mock_free:
+    with patch.object(scheduler, "free_vram_mb", new_callable=AsyncMock) as mock_free:
         mock_free.return_value = 1000.0
-        
+
         success = await scheduler.ensure_available("m1", 500)
-        
+
         assert success is True
         assert m2.is_loaded() is False
         assert m1.is_loaded() is True
+
 
 @pytest.mark.asyncio
 async def test_free_vram_fallback():
     """Test fallback logic for free_vram_mb."""
     scheduler = GpuScheduler()
-    
+
     # Mock pynvml and subprocess
     with patch("obase.gpu.pynvml", None):
         with patch("asyncio.create_subprocess_shell") as mock_shell:
@@ -126,9 +133,10 @@ async def test_free_vram_fallback():
             mock_process.communicate.return_value = (b"1234\n", b"")
             mock_process.returncode = 0
             mock_shell.return_value = mock_process
-            
+
             vram = await scheduler.free_vram_mb()
             assert vram == 1234.0
+
 
 @pytest.mark.asyncio
 async def test_lifecycle():
@@ -136,24 +144,25 @@ async def test_lifecycle():
     registry = ModelRegistry()
     m1 = MockModelProvider("m1")
     registry.register("m1", m1)
-    
+
     await registry.load("m1")
     assert m1.is_loaded() is True
     assert m1.load_called == 1
-    
+
     # Load again should not trigger another load
     await registry.load("m1")
     assert m1.load_called == 1
-    
+
     await registry.unload("m1")
     assert m1.is_loaded() is False
     assert m1.unload_called == 1
+
 
 @pytest.mark.asyncio
 async def test_cancellation_safety():
     """CancelledError should not leave the lock held."""
     scheduler = GpuScheduler()
-    
+
     async def task():
         try:
             async with scheduler.acquire(100):
@@ -162,14 +171,14 @@ async def test_cancellation_safety():
             pass
 
     t = asyncio.create_task(task())
-    await asyncio.sleep(0.1) # Let it acquire the lock
+    await asyncio.sleep(0.1)  # Let it acquire the lock
     assert scheduler._vram_lock.locked()
-    
+
     t.cancel()
     await asyncio.sleep(0.1)
-    
+
     assert not scheduler._vram_lock.locked()
-    
+
     # Should be able to acquire again
     async with scheduler.acquire(100):
         assert scheduler._vram_lock.locked()

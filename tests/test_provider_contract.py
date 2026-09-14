@@ -1,4 +1,5 @@
 """Tests for E1 ProviderContract + ProviderContractRegistry."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,28 +10,36 @@ from obase.provider_contract import ProviderContract, ProviderContractRegistry
 
 def _wan_local() -> ProviderContract:
     return ProviderContract(
-        name="wan_local", location="local", capability="video_gen",
-        unit_cost_usd=0.0, unit="per_second",
+        name="wan_local",
+        location="local",
+        capability="video_gen",
+        unit_cost_usd=0.0,
+        unit="per_second",
     )
 
 
 def _ltx2_local() -> ProviderContract:
     return ProviderContract(
-        name="ltx2_local", location="local", capability="video_gen",
-        unit_cost_usd=0.0, unit="per_second",
+        name="ltx2_local",
+        location="local",
+        capability="video_gen",
+        unit_cost_usd=0.0,
+        unit="per_second",
         alias_of="wan_local",
     )
 
 
 def _wan_cloud() -> ProviderContract:
     return ProviderContract(
-        name="wan_cloud", location="cloud", capability="video_gen",
-        unit_cost_usd=0.08, unit="per_second",
+        name="wan_cloud",
+        location="cloud",
+        capability="video_gen",
+        unit_cost_usd=0.08,
+        unit="per_second",
     )
 
 
 class TestProviderContract:
-
     def test_register_and_lookup(self):
         reg = ProviderContractRegistry()
         reg.register(_wan_local())
@@ -87,10 +96,22 @@ class TestProviderContract:
 
     def test_circular_alias_raises(self):
         reg = ProviderContractRegistry()
-        a = ProviderContract(name="a", location="local", capability="llm",
-                             unit_cost_usd=0.0, unit="per_call", alias_of="b")
-        b = ProviderContract(name="b", location="local", capability="llm",
-                             unit_cost_usd=0.0, unit="per_call", alias_of="a")
+        a = ProviderContract(
+            name="a",
+            location="local",
+            capability="llm",
+            unit_cost_usd=0.0,
+            unit="per_call",
+            alias_of="b",
+        )
+        b = ProviderContract(
+            name="b",
+            location="local",
+            capability="llm",
+            unit_cost_usd=0.0,
+            unit="per_call",
+            alias_of="a",
+        )
         reg.register(a)
         reg.register(b)
         with pytest.raises(ValueError, match="Circular"):
@@ -98,22 +119,47 @@ class TestProviderContract:
 
     def test_broken_alias_chain_raises(self):
         reg = ProviderContractRegistry()
-        reg.register(ProviderContract(
-            name="ltx2_local", location="local", capability="video_gen",
-            unit_cost_usd=0.0, unit="per_second", alias_of="wan_local",
-        ))
+        reg.register(
+            ProviderContract(
+                name="ltx2_local",
+                location="local",
+                capability="video_gen",
+                unit_cost_usd=0.0,
+                unit="per_second",
+                alias_of="wan_local",
+            )
+        )
         # wan_local not registered → broken chain
         with pytest.raises(ProviderNotFoundError):
             reg.resolve("ltx2_local")
 
     def test_multi_hop_alias_chain(self):
         reg = ProviderContractRegistry()
-        reg.register(ProviderContract(name="c", location="local", capability="llm",
-                                      unit_cost_usd=0.02, unit="per_call"))
-        reg.register(ProviderContract(name="b", location="cloud", capability="llm",
-                                      unit_cost_usd=0.0, unit="per_call", alias_of="c"))
-        reg.register(ProviderContract(name="a", location="cloud", capability="llm",
-                                      unit_cost_usd=0.0, unit="per_call", alias_of="b"))
+        reg.register(
+            ProviderContract(
+                name="c", location="local", capability="llm", unit_cost_usd=0.02, unit="per_call"
+            )
+        )
+        reg.register(
+            ProviderContract(
+                name="b",
+                location="cloud",
+                capability="llm",
+                unit_cost_usd=0.0,
+                unit="per_call",
+                alias_of="c",
+            )
+        )
+        reg.register(
+            ProviderContract(
+                name="a",
+                location="cloud",
+                capability="llm",
+                unit_cost_usd=0.0,
+                unit="per_call",
+                alias_of="b",
+            )
+        )
         resolved = reg.resolve("a")
         assert resolved.name == "c"
         assert resolved.unit_cost_usd == 0.02

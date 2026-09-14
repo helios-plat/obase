@@ -80,9 +80,7 @@ def _from_stdlib(tree: ast.AST) -> list[dict[str, Any]]:
                 }
             )
         elif isinstance(item, ast.Assign):
-            names = [
-                t.id for t in item.targets if isinstance(t, ast.Name)
-            ]
+            names = [t.id for t in item.targets if isinstance(t, ast.Name)]
             value = _literal(item.value)
             if names and value is not None:
                 nodes.append(
@@ -236,5 +234,3 @@ def _ts_assignment(node: Any, source: bytes) -> dict[str, Any] | None:
                 "line": child.start_point[0] + 1,
             }
     return None
-
-

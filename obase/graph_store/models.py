@@ -41,11 +41,7 @@ class GraphDBPool:
 
     def find_active(self, subject: str, *, predicate: str) -> FactNode | None:
         for fact in self.facts.values():
-            if (
-                fact.status == "ACTIVE"
-                and fact.subject == subject
-                and fact.predicate == predicate
-            ):
+            if fact.status == "ACTIVE" and fact.subject == subject and fact.predicate == predicate:
                 return fact
         return None
 

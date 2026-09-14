@@ -13,7 +13,7 @@ import os
 import platform
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,19 +44,22 @@ def support_bundle_pack(
     ctx = context or {}
     base = Path(output_dir) if output_dir else Path.home() / ".veya" / "bundles"
     base.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     bundle_path = base / f"support-bundle-{ts}.zip"
 
     files: dict[str, str] = {}
 
     # system info
-    files["system.json"] = json.dumps({
-        "platform": platform.platform(),
-        "python": platform.python_version(),
-        "node": _sh("node --version") or "N/A",
-        "cwd": str(Path.cwd()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }, indent=2)
+    files["system.json"] = json.dumps(
+        {
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "node": _sh("node --version") or "N/A",
+            "cwd": str(Path.cwd()),
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+        indent=2,
+    )
 
     # redacted env
     env_lines = []
@@ -87,7 +90,11 @@ def support_bundle_pack(
     # doctor
     if include_doctor:
         doctor = {}
-        for name, cmd in [("disk", "df -h /"), ("memory", "free -m"), ("python_pkgs", f"{_py()} -m pip freeze 2>/dev/null | head -30")]:
+        for name, cmd in [
+            ("disk", "df -h /"),
+            ("memory", "free -m"),
+            ("python_pkgs", f"{_py()} -m pip freeze 2>/dev/null | head -30"),
+        ]:
             doctor[name] = _sh(cmd) or "N/A"
         files["doctor.txt"] = "\n\n".join(f"--- {k} ---\n{v}" for k, v in doctor.items())
 
@@ -97,11 +104,17 @@ def support_bundle_pack(
             zf.writestr(name, content)
 
     size = bundle_path.stat().st_size
-    return {"status": "completed", "bundle_path": str(bundle_path), "files_included": len(files), "size_bytes": size}
+    return {
+        "status": "completed",
+        "bundle_path": str(bundle_path),
+        "files_included": len(files),
+        "size_bytes": size,
+    }
 
 
 def _redact_yaml(text: str) -> str:
     import re as _re
+
     for pattern in [
         r"(?im)^(\s*[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential|private[_-]?key)[\w.-]*\s*:\s*)(.+)$",
     ]:
@@ -113,12 +126,16 @@ def _redact_yaml(text: str) -> str:
 
 def _sh(cmd: str) -> str | None:
     import subprocess
+
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
+        return subprocess.check_output(
+            cmd, shell=True, text=True, stderr=subprocess.DEVNULL, timeout=10
+        ).strip()
     except Exception:
         return None
 
 
 def _py() -> str:
     import sys
+
     return sys.executable

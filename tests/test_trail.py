@@ -90,6 +90,7 @@ class TestQueryTrail:
 
     def test_query_by_after(self, isolated_working_dir):
         import time
+
         trail = Trail("time-run")
         trail.emit("early", val=0)
         time.sleep(0.05)

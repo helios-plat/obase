@@ -1,4 +1,5 @@
 """data_lineage — Track data transformation lineage."""
+
 from __future__ import annotations
 
 import hashlib
@@ -40,13 +41,15 @@ class DataLineage:
             output_hash: Hash of output data.
             metadata: Optional extra metadata.
         """
-        self._records.append({
-            "timestamp": time.time(),
-            "source": source,
-            "transform": transform,
-            "output_hash": output_hash,
-            "metadata": metadata,
-        })
+        self._records.append(
+            {
+                "timestamp": time.time(),
+                "source": source,
+                "transform": transform,
+                "output_hash": output_hash,
+                "metadata": metadata,
+            }
+        )
 
     @property
     def records(self) -> list[dict[str, Any]]:

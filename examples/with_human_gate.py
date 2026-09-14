@@ -1,4 +1,5 @@
 """Pause + resume + resume_data human gate demo."""
+
 from __future__ import annotations
 
 import asyncio
@@ -55,11 +56,11 @@ async def main() -> None:
 
     # Write the updated data back so resume can pick it up
     import json
+
     from obase.fs import FS
+
     run_dir = FS.run_dir("gate-demo-1")
-    (run_dir / "run_state.json").write_text(
-        json.dumps(state1.to_dict(), default=str)
-    )
+    (run_dir / "run_state.json").write_text(json.dumps(state1.to_dict(), default=str))
 
     print("\n=== Second run: resume from paused stage ===")
     state2 = await run_pipeline(pipeline, run_id="gate-demo-1", resume=True)

@@ -11,7 +11,8 @@ this as the single source of truth for "what agents/tools/workflows exist".
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 REGISTRY_TYPES = ("agent", "tool", "workflow", "plugin_agent", "plugin_tool", "runtime")
 

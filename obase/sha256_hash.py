@@ -1,4 +1,5 @@
 """obase.sha256_hash — Raw SHA-256 digest helper."""
+
 from __future__ import annotations
 
 import hashlib

@@ -1,4 +1,5 @@
 """Runtime provider switching demo."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,8 +7,8 @@ import asyncio
 from obase.orchestrator import OrchestratorContext, Pipeline, Stage, run_pipeline
 from obase.provider_registry import ProviderRegistry
 
-
 # --- Two mock LLM providers ---
+
 
 def openai_mock(prompt: str) -> str:
     return f"[openai] {prompt}"
@@ -18,6 +19,7 @@ def anthropic_mock(prompt: str) -> str:
 
 
 # --- Stage that reads provider name from pipeline data ---
+
 
 async def call_llm(data: dict, ctx: OrchestratorContext) -> dict:
     provider_name = data.get("llm_provider", "openai")
@@ -44,6 +46,7 @@ async def main() -> None:
     await run_with_provider("anthropic")
 
     print("\n=== Hot-swapping provider at runtime ===")
+
     def fast_mock(prompt: str) -> str:
         return f"[fast-mock] {prompt}"
 

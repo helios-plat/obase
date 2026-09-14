@@ -1,4 +1,5 @@
 """Tests for obase.retry — retry_with_backoff and RetryPolicy."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def _make_flaky(fail_times: int, exc: Exception | None = None) -> MagicMock:
     """Return a sync callable that fails *fail_times* then succeeds."""
@@ -39,6 +41,7 @@ def _make_async_flaky(fail_times: int, exc: Exception | None = None) -> AsyncMoc
 
 
 # ── retry_with_backoff ──────────────────────────────────────────────────────
+
 
 class TestRetryWithBackoff:
     """Tests for the retry_with_backoff function."""
@@ -83,9 +86,7 @@ class TestRetryWithBackoff:
 
         fn = MagicMock(side_effect=ValueError("fatal"))
         with patch("asyncio.sleep") as slp, pytest.raises(ValueError, match="fatal"):
-            await retry_with_backoff(
-                fn, max_attempts=5, retryable=(ConnectionError,)
-            )
+            await retry_with_backoff(fn, max_attempts=5, retryable=(ConnectionError,))
         assert fn.call_count == 1
         slp.assert_not_called()
 
@@ -170,9 +171,7 @@ class TestRetryWithBackoff:
             delays.append(d)
 
         with patch("obase.retry.asyncio.sleep", side_effect=fake_sleep):
-            result = await retry_with_backoff(
-                fn, max_attempts=5, base_delay=1.0, max_delay=100.0
-            )
+            result = await retry_with_backoff(fn, max_attempts=5, base_delay=1.0, max_delay=100.0)
 
         assert result == "ok"
         # delays[0]=1.0 (2^0), delays[1]=2.0 (2^1), delays[2]=4.0 (2^2)
@@ -180,6 +179,7 @@ class TestRetryWithBackoff:
 
 
 # ── RetryPolicy ─────────────────────────────────────────────────────────────
+
 
 class TestRetryPolicy:
     """Smoke tests for existing RetryPolicy class."""

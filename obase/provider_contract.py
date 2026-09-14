@@ -3,6 +3,7 @@
 Replaces manual PricingTable registration with contract-driven derivation.
 Aliases (ltx2_local→wan_local) resolve to the endpoint's pricing automatically.
 """
+
 from __future__ import annotations
 
 from typing import Literal
@@ -15,9 +16,9 @@ from obase.exceptions import ProviderNotFoundError
 class ProviderContract(OBaseModel):
     name: str
     location: Literal["local", "cloud"]
-    capability: str           # "video_gen" | "llm" | "audio" | "avatar"
-    unit_cost_usd: float      # local=0.0
-    unit: str                 # "per_second" | "per_call" | "per_token"
+    capability: str  # "video_gen" | "llm" | "audio" | "avatar"
+    unit_cost_usd: float  # local=0.0
+    unit: str  # "per_second" | "per_call" | "per_token"
     alias_of: str | None = None
 
 
@@ -58,11 +59,13 @@ class ProviderContractRegistry(OBaseModel):
         entries: list[PricingEntry] = []
         for name in self.contracts:
             resolved = self.resolve(name)
-            entries.append(PricingEntry(
-                category=resolved.capability,
-                provider=name,
-                model_or_tier=name,
-                unit=resolved.unit,
-                price_usd=resolved.unit_cost_usd,
-            ))
+            entries.append(
+                PricingEntry(
+                    category=resolved.capability,
+                    provider=name,
+                    model_or_tier=name,
+                    unit=resolved.unit,
+                    price_usd=resolved.unit_cost_usd,
+                )
+            )
         return PricingTable(entries=entries)

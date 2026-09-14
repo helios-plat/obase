@@ -17,7 +17,6 @@ from typing import Any
 __version__ = "0.31.0"
 
 # --- core imports: stdlib-only or light deps (structlog, yaml, httpx, pydantic) ---
-from obase.bootstrap import bootstrap, load_env
 from obase.action import (
     ActionDecision,
     ActionEffect,
@@ -27,7 +26,7 @@ from obase.action import (
     PolicyRule,
     redact_value,
 )
-from obase.cache import Cache, DistributedLock, cached
+from obase.bootstrap import bootstrap, load_env
 from obase.browser import (
     BrowserAdapter,
     BrowserControlState,
@@ -36,6 +35,7 @@ from obase.browser import (
     BrowserSessionState,
     PlaywrightBrowserAdapter,
 )
+from obase.cache import Cache, DistributedLock, cached
 from obase.computer import ComputerHandle, ComputerProfile
 from obase.cost_tracker import (
     CostBreakdown,
@@ -119,7 +119,6 @@ from obase.runbook_runtime import (
     register_hook,
 )
 from obase.scheduler import IntradayPollScheduler
-from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.tool_governance import (
     CredentialRef,
     Grant,
@@ -130,8 +129,23 @@ from obase.tool_governance import (
     ToolSpec,
     redact_payload,
 )
+from obase.tool_registry import ToolMeta, ToolRegistry, ToolRegistryConflict, register_tool
 from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
+
+from .causal_graph_store import CausalGraphError, CausalGraphStore, get_runtime_causal_store
+from .debounced_memory_queue import DebouncedMemoryQueue
+from .knowledge_store import KnowledgeStore
+from .local_sandbox_pool import HoneypotAccessError, LocalSandboxPool, SandboxExecutionResult
+from .plugin_registry import PluginRegistry
+from .support_bundle_pack import support_bundle_pack
+from .team_registry import (
+    TeamRegistry,
+    make_message,
+    make_task,
+    make_team_config,
+    make_team_member,
+)
 
 __all__ = [
     "__version__",
@@ -146,6 +160,9 @@ __all__ = [
     "redact_value",
     "ComputerHandle",
     "ComputerProfile",
+    "CostBreakdown",
+    "StepUsage",
+    "convert_currency",
     "BrowserAdapter",
     "BrowserControlState",
     "BrowserProfile",
@@ -214,6 +231,21 @@ __all__ = [
     "ProviderHealth",
     "ProviderSpec",
     "UsageRecord",
+    "CausalGraphError",
+    "CausalGraphStore",
+    "get_runtime_causal_store",
+    "DebouncedMemoryQueue",
+    "KnowledgeStore",
+    "HoneypotAccessError",
+    "LocalSandboxPool",
+    "SandboxExecutionResult",
+    "PluginRegistry",
+    "support_bundle_pack",
+    "TeamRegistry",
+    "make_message",
+    "make_task",
+    "make_team_config",
+    "make_team_member",
     "RateLimitRegistry",
     "RateLimiter",
     "ToolMeta",
@@ -405,27 +437,3 @@ def __getattr__(name: str) -> Any:
             if hasattr(module, attr):
                 return getattr(module, attr)
     raise AttributeError(f"module 'obase' has no attribute {name!r}")
-
-
-# ── Phase 2: 认知因果 / 蜜罐博弈 基础设施 ──────────────────────────
-from .causal_graph_store import (  # noqa: F401
-    CausalGraphError,
-    CausalGraphStore,
-    get_runtime_causal_store,
-)
-from .debounced_memory_queue import DebouncedMemoryQueue  # noqa: F401
-from .knowledge_store import KnowledgeStore  # noqa: F401
-from .local_sandbox_pool import (  # noqa: F401
-    HoneypotAccessError,
-    LocalSandboxPool,
-    SandboxExecutionResult,
-)
-from .plugin_registry import PluginRegistry  # noqa: F401
-from .support_bundle_pack import support_bundle_pack  # noqa: F401
-from .team_registry import (  # noqa: F401
-    TeamRegistry,
-    make_message,
-    make_task,
-    make_team_config,
-    make_team_member,
-)

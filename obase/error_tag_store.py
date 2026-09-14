@@ -15,10 +15,11 @@ from obase.uuid7 import uuid7
 SCHEMA = "public"
 TABLE = "error_tags"
 
+
 async def ensure_error_tag_table(pool: PgPool):
     """初始化错误标签表。"""
     from obase.persistence import ensure_index, ensure_table
-    
+
     await ensure_table(
         pool=pool,
         schema=SCHEMA,
@@ -32,15 +33,16 @@ async def ensure_error_tag_table(pool: PgPool):
             ("secondary_tags", "TEXT[]"),
             ("reason", "TEXT"),
             ("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"),
-        ]
+        ],
     )
     await ensure_index(
         pool=pool,
         schema=SCHEMA,
         table=TABLE,
         index_name="idx_error_tags_student_kc",
-        columns="student_id, kc_id"
+        columns="student_id, kc_id",
     )
+
 
 async def store_error_tag(
     pool: PgPool,
@@ -49,7 +51,7 @@ async def store_error_tag(
     kc_id: str,
     primary_tag: str,
     secondary_tags: list[str] | None = None,
-    reason: str | None = None
+    reason: str | None = None,
 ) -> UUID:
     """存储一条错误标签记录。"""
     record_id = uuid7()
@@ -65,15 +67,14 @@ async def store_error_tag(
             "primary_tag": primary_tag,
             "secondary_tags": secondary_tags or [],
             "reason": reason,
-            "created_at": datetime.now(UTC)
-        }
+            "created_at": datetime.now(UTC),
+        },
     )
     return record_id
 
+
 async def get_error_distribution(
-    pool: PgPool,
-    student_id: UUID,
-    kc_id: str | None = None
+    pool: PgPool, student_id: UUID, kc_id: str | None = None
 ) -> list[dict]:
     """获取错误类型分布。"""
     where = "student_id = $1"
@@ -81,7 +82,7 @@ async def get_error_distribution(
     if kc_id:
         where += " AND kc_id = $2"
         params.append(kc_id)
-        
+
     sql = f"""
         SELECT primary_tag, COUNT(*) as count
         FROM "{SCHEMA}"."{TABLE}"
@@ -89,5 +90,6 @@ async def get_error_distribution(
         GROUP BY primary_tag
     """
     return await query(pool=pool, sql=sql, params=params)
+
 
 __version__ = "0.1.0"

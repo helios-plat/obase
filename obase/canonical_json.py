@@ -3,6 +3,7 @@
 Produces stable bytes for any dict/list/primitive, including numpy scalars.
 Sort keys ensures key-order independence; output is always UTF-8 encoded.
 """
+
 from __future__ import annotations
 
 import json

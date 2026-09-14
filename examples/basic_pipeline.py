@@ -1,18 +1,19 @@
 """Basic pipeline: 3 stages + trail + cost + cache + rate_limit + 2 mock providers."""
+
 from __future__ import annotations
 
 import asyncio
 
 from obase.bootstrap import bootstrap
-from obase.cache import Cache, cached
+from obase.cache import Cache
 from obase.cost_tracker import CostTracker, PricingEntry, PricingTable
 from obase.orchestrator import OrchestratorContext, Pipeline, Stage, run_pipeline
 from obase.provider_registry import ProviderRegistry
 from obase.rate_limit import RateLimitRegistry
 from obase.trail import Trail
 
-
 # --- Mock providers ---
+
 
 def mock_llm_provider(prompt: str) -> str:
     return f"[mock-llm] response to: {prompt}"
@@ -26,8 +27,12 @@ def mock_tts_provider(text: str) -> bytes:
 
 PRICING = PricingTable(
     entries=[
-        PricingEntry(category="llm", provider="mock", model_or_tier="v1", unit="token", price_usd=0.001),
-        PricingEntry(category="tts", provider="mock", model_or_tier="std", unit="char", price_usd=0.00001),
+        PricingEntry(
+            category="llm", provider="mock", model_or_tier="v1", unit="token", price_usd=0.001
+        ),
+        PricingEntry(
+            category="tts", provider="mock", model_or_tier="std", unit="char", price_usd=0.00001
+        ),
     ]
 )
 
@@ -42,6 +47,7 @@ RateLimitRegistry.register("mock-tts", rate=5, period_seconds=1.0)
 
 
 # --- Stage functions ---
+
 
 async def stage_generate(data: dict, ctx: OrchestratorContext) -> dict:
     """Call mock LLM, track cost, cache result."""

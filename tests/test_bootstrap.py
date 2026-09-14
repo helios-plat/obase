@@ -91,7 +91,7 @@ class TestLoadEnv:
 
     def test_quoted_values(self, tmp_path):
         f = tmp_path / ".env"
-        f.write_text('QUOTED="hello world"\nSINGLE=\'single quoted\'\n')
+        f.write_text("QUOTED=\"hello world\"\nSINGLE='single quoted'\n")
         injected = load_env(f)
         assert injected["QUOTED"] == "hello world"
         assert injected["SINGLE"] == "single quoted"
@@ -112,16 +112,19 @@ class TestLoadEnv:
 class TestBootstrapFn:
     def test_bootstrap_no_args(self):
         from obase.bootstrap import bootstrap
+
         bootstrap(auto_discover_providers=False)
 
     def test_bootstrap_with_working_dir(self, tmp_path):
         from obase.bootstrap import bootstrap
         from obase.fs import FS
+
         bootstrap(working_dir=tmp_path / "work", auto_discover_providers=False)
         assert FS.working_dir() == tmp_path / "work"
 
     def test_bootstrap_with_env(self, tmp_path):
         from obase.bootstrap import bootstrap
+
         f = tmp_path / ".env"
         f.write_text("BOOT_TEST_VAR=ok\n")
         bootstrap(env_path=f, auto_discover_providers=False)

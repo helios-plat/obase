@@ -20,9 +20,7 @@ class IntradayPollScheduler:
         self._running = False
         self._status: dict[str, str] = {}
 
-    def register_window(
-        self, *, name: str, trigger_time: time, handler: Callable[[], Any]
-    ) -> None:
+    def register_window(self, *, name: str, trigger_time: time, handler: Callable[[], Any]) -> None:
         """Register a polling window."""
         self._windows.append({"name": name, "trigger_time": trigger_time, "handler": handler})
         self._status[name] = "registered"
@@ -51,10 +49,13 @@ class IntradayPollScheduler:
         for w in self._windows:
             trigger = w["trigger_time"]
             # Check if within 1-minute window of trigger
-            if abs(
-                (current_time.hour * 60 + current_time.minute)
-                - (trigger.hour * 60 + trigger.minute)
-            ) > 0:
+            if (
+                abs(
+                    (current_time.hour * 60 + current_time.minute)
+                    - (trigger.hour * 60 + trigger.minute)
+                )
+                > 0
+            ):
                 continue
 
             try:

@@ -51,6 +51,7 @@ trail.emit("stage_done", elapsed=1.2)
 
 ```python
 from obase.trail import query_trail
+
 events = query_trail(event_type="stage_done", run_id_pattern="run-2026")
 ```
 
@@ -84,8 +85,8 @@ Stages now support explicit I/O contracts:
 Stage(
     name="my_stage",
     func=my_func,
-    input_keys=["prompt", "context"],   # None = receive full dict (compat mode)
-    output_keys=["response"],           # None = return anything (compat mode)
+    input_keys=["prompt", "context"],  # None = receive full dict (compat mode)
+    output_keys=["response"],  # None = return anything (compat mode)
 )
 ```
 
@@ -141,10 +142,12 @@ The module-level `load_from_yaml()` function is replaced by a class with classme
 ```python
 # Before
 from hevi.base.rate_limit import load_from_yaml
+
 load_from_yaml(path)
 
 # After
 from obase.rate_limit import RateLimitRegistry
+
 RateLimitRegistry.load_from_yaml(path)
 rl = RateLimitRegistry.get("my-api")
 ```

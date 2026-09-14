@@ -1,4 +1,5 @@
 """tracing — Distributed tracing utilities with ContextVar-based trace propagation."""
+
 from __future__ import annotations
 
 import time
@@ -64,6 +65,7 @@ class Tracer:
 # ---------------------------------------------------------------------------
 # ContextVar-based API — trace_id propagates automatically within a Task
 # ---------------------------------------------------------------------------
+
 
 @contextmanager
 def start_trace(trace_id: str | None = None) -> Generator[str, None, None]:

@@ -8,6 +8,7 @@
 此前 obase/cognitive_store.py 直接 `from oprim ... import`，违反 obase→3O 反向依赖红线；
 把类型上移到 obase 后，依赖方向恢复为 oprim→obase。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,14 +28,15 @@ class KCState:
     last_interaction_ts: 上次交互 unix 时间戳
     n_attempts: 累计交互次数
     """
+
     kc_id: str
     p_init: float = 0.20
     p_transit: float = 0.20
     p_guess: float = 0.15
     p_slip: float = 0.12
     p_mastery: float | None = None
-    p_recognition: float | None = None       # 识别维度掌握概率（M-G）
-    p_recognition_init: float = 0.20             # 识别维度先验
+    p_recognition: float | None = None  # 识别维度掌握概率（M-G）
+    p_recognition_init: float = 0.20  # 识别维度先验
     long_term_mastery: float | None = None
     last_interaction_ts: float | None = None
     n_attempts: int = 0
@@ -57,4 +59,5 @@ def new_state_from_prior(*, kc_id: str, prior: dict) -> KCState:
 def fsrs_new_card() -> dict:
     """创建新 FSRS 记忆卡片（初始状态）。"""
     from fsrs import Card
+
     return Card().to_dict()

@@ -12,8 +12,7 @@ template_data = {
     "name": "quant_finance_v1",
     "version": "1.0.0",
     "system_prompt": (
-        "You are a {role} specializing in {domain}. "
-        "Generate content for a {duration}-second video."
+        "You are a {role} specializing in {domain}. Generate content for a {duration}-second video."
     ),
     "metadata": {"author": "wiki", "industry": "finance"},
 }
@@ -31,7 +30,9 @@ validate(template)
 print("Validation passed.")
 
 # 4. Render
-prompt = render_prompt(template, {"role": "quant analyst", "domain": "derivatives", "duration": "60"})
+prompt = render_prompt(
+    template, {"role": "quant analyst", "domain": "derivatives", "duration": "60"}
+)
 print(f"Rendered: {prompt}")
 
 # 5. Programmatic construction

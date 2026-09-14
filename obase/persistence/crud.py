@@ -22,7 +22,7 @@ async def insert_one(
 
     keys = sorted(data.keys())
     cols = ", ".join(f'"{k}"' for k in keys)
-    placeholders = ", ".join(f"${i+1}" for i in range(len(keys)))
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(keys)))
     sql = f'INSERT INTO "{table}" ({cols}) VALUES ({placeholders}) RETURNING "{returning}"'
 
     async with transaction(pool) as tx:
@@ -82,7 +82,7 @@ async def update_one(
         raise ValueError("update_one: data must not be empty")
 
     keys = sorted(data.keys())
-    sets = ", ".join(f'"{k}" = ${i+2}' for i, k in enumerate(keys))
+    sets = ", ".join(f'"{k}" = ${i + 2}' for i, k in enumerate(keys))
     sql = f'UPDATE "{table}" SET {sets} WHERE "{id_column}" = $1'
 
     async with transaction(pool) as tx:

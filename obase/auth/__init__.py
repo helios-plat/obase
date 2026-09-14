@@ -12,6 +12,7 @@ from obase.auth.totp import totp_qr_url, totp_secret_generate, totp_verify
 def create_access_token(payload: dict[str, Any], *, expires_in: int | None = None) -> str:
     """Create a signed JWT access token using settings.JWT_SECRET."""
     from obase.config import settings
+
     exp = expires_in if expires_in is not None else settings.JWT_EXPIRE_SECONDS
     return jwt_sign_hs256(payload=payload, secret=settings.JWT_SECRET, expires_in_seconds=exp)
 
@@ -19,6 +20,7 @@ def create_access_token(payload: dict[str, Any], *, expires_in: int | None = Non
 def decode_access_token(token: str) -> dict[str, Any] | None:
     """Verify and decode a JWT access token. Returns payload or None on failure."""
     from obase.config import settings
+
     try:
         return jwt_verify_hs256(token=token, secret=settings.JWT_SECRET)
     except (JWTVerifyError, Exception):

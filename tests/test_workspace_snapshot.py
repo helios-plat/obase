@@ -11,8 +11,13 @@ from obase.workspace_snapshot import WorkspaceInspector, WorkspaceSnapshot
 
 
 def _git(root: Path, *args: str) -> None:
-    env = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.local",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.local"}
+    env = {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t.local",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t.local",
+    }
     subprocess.run(
         ["git", "-c", "commit.gpgsign=false", *args],
         cwd=root,

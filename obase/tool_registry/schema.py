@@ -1,4 +1,5 @@
 """Schema generation: convert ToolMeta into OpenAI / Anthropic tool call schemas."""
+
 from __future__ import annotations
 
 import inspect
@@ -47,9 +48,7 @@ def build_args_model(fn: Any) -> type[BaseModel]:
                 "(use * separator). This is required for stable LLM tool calls."
             )
         if pname not in type_hints:
-            raise RuntimeError(
-                f"{fn.__name__}: parameter {pname!r} missing type annotation"
-            )
+            raise RuntimeError(f"{fn.__name__}: parameter {pname!r} missing type annotation")
         annot = type_hints[pname]
         _validate_param_type(pname, annot, fn_name=fn.__name__)
 
@@ -106,9 +105,7 @@ def to_anthropic_tool(meta: ToolMeta) -> dict[str, Any]:
     args_model = build_args_model(meta.fn)
     name_safe = meta.name.replace(".", "__")
     if len(name_safe) > 64:
-        raise RuntimeError(
-            f"Tool name too long for Anthropic (>64 chars): {name_safe!r}."
-        )
+        raise RuntimeError(f"Tool name too long for Anthropic (>64 chars): {name_safe!r}.")
     return {
         "name": name_safe,
         "description": meta.description,
@@ -151,9 +148,7 @@ def _parse_docstring_args(docstring: str) -> dict[str, str]:
     current_desc: list[str] = []
     arg_indent: int | None = None
 
-    _SECTION_HEADERS = frozenset(
-        {"Returns:", "Raises:", "Yields:", "Examples:", "Note:", "Notes:"}
-    )
+    _SECTION_HEADERS = frozenset({"Returns:", "Raises:", "Yields:", "Examples:", "Note:", "Notes:"})
 
     for line in lines:
         stripped = line.strip()

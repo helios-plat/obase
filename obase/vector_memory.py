@@ -14,8 +14,9 @@ from __future__ import annotations
 import math
 import re
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9_\u4e00-\u9fff]+")
 
@@ -30,7 +31,9 @@ class VectorMemory:
         hits = mem.query(["parse AST"])
     """
 
-    def __init__(self, base_dir: str | Path | None = None, embed_fn: Callable | None = None) -> None:
+    def __init__(
+        self, base_dir: str | Path | None = None, embed_fn: Callable | None = None
+    ) -> None:
         self._base = Path(base_dir) if base_dir else Path.home() / ".veya" / "memory"
         self._base.mkdir(parents=True, exist_ok=True)
         self._db = self._base / "memory.db"
@@ -49,7 +52,9 @@ class VectorMemory:
         self._conn.commit()
 
     # -- writes ------------------------------------------------------------
-    def add(self, query: str, result: str, collection: str = "default", metadata: dict | None = None) -> int:
+    def add(
+        self, query: str, result: str, collection: str = "default", metadata: dict | None = None
+    ) -> int:
         """Insert one (query, result) memory entry; returns the record id."""
         import json
 
@@ -61,11 +66,15 @@ class VectorMemory:
         return int(cur.lastrowid)
 
     # AutoAgent-compatible alias
-    def add_query(self, query: str, result: str, collection: str = "default", metadata: dict | None = None) -> int:
+    def add_query(
+        self, query: str, result: str, collection: str = "default", metadata: dict | None = None
+    ) -> int:
         return self.add(query, result, collection, metadata)
 
     # -- retrieval ---------------------------------------------------------
-    def query(self, query_texts: list[str], collection: str | None = None, n_results: int = 5) -> list[dict[str, Any]]:
+    def query(
+        self, query_texts: list[str], collection: str | None = None, n_results: int = 5
+    ) -> list[dict[str, Any]]:
         """Retrieve the top-n most relevant memories (deterministic offline)."""
         rows = self._conn.execute(
             "SELECT id, collection, query, result, metadata FROM memory"
@@ -88,11 +97,20 @@ class VectorMemory:
         query_terms = _terms(" ".join(query_texts))
         for c in candidates:
             doc_terms = _terms(c["query"] + " " + c["result"])
-            scores.append((c, _bm25_score(query_terms, doc_terms, len(candidates), _df(candidates, query_terms))))
+            scores.append(
+                (
+                    c,
+                    _bm25_score(
+                        query_terms, doc_terms, len(candidates), _df(candidates, query_terms)
+                    ),
+                )
+            )
         scores.sort(key=lambda kv: -kv[1])
         return [c for c, _ in scores[:n_results] if _ > 0] or candidates[:n_results]
 
-    def _rank_embeddings(self, query_texts: list[str], candidates: list[dict], n_results: int) -> list[dict]:
+    def _rank_embeddings(
+        self, query_texts: list[str], candidates: list[dict], n_results: int
+    ) -> list[dict]:
         qvec = self._embed_fn(" ".join(query_texts))
         scored = []
         for c in candidates:
@@ -150,7 +168,9 @@ def _df(candidates: list[dict], terms: list[str]) -> dict[str, int]:
     return df
 
 
-def _bm25_score(query_terms: list[str], doc_terms: list[str], n_docs: int, df: dict[str, int]) -> float:
+def _bm25_score(
+    query_terms: list[str], doc_terms: list[str], n_docs: int, df: dict[str, int]
+) -> float:
     if not doc_terms:
         return 0.0
     k1, b = 1.5, 0.75

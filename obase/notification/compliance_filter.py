@@ -23,12 +23,14 @@ class NotificationComplianceFilter:
         scope: str = "non_critical",
     ) -> None:
         """Register quiet hours. During quiet hours, non-critical notifications are blocked."""
-        self._quiet_hours.append({
-            "start": start_time,
-            "end": end_time,
-            "timezone": timezone,
-            "scope": scope,
-        })
+        self._quiet_hours.append(
+            {
+                "start": start_time,
+                "end": end_time,
+                "timezone": timezone,
+                "scope": scope,
+            }
+        )
 
     def register_disclaimer_template(
         self,

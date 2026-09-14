@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +47,11 @@ class PluginRegistry:
         """Install a plugin from a source."""
         pid = name.replace("/", "_").replace("@", "")
         if pid in self._installed:
-            return {"status": "already_installed", "name": name, "version": self._installed[pid].get("version")}
+            return {
+                "status": "already_installed",
+                "name": name,
+                "version": self._installed[pid].get("version"),
+            }
 
         plugin = {
             "id": pid,
@@ -101,8 +104,13 @@ class PluginRegistry:
     def list_customizations(self) -> list[dict[str, Any]]:
         """List plugin customizations (Cindy's ListCustomizationsResult)."""
         return [
-            {"name": p["name"], "version": p["version"], "capabilities": p.get("capabilities", []),
-             "enabled": p.get("enabled", True), "config": p.get("config", {})}
+            {
+                "name": p["name"],
+                "version": p["version"],
+                "capabilities": p.get("capabilities", []),
+                "enabled": p.get("enabled", True),
+                "config": p.get("config", {}),
+            }
             for p in self._installed.values()
         ]
 
@@ -110,15 +118,20 @@ class PluginRegistry:
         return len(self._installed)
 
     # -- marketplace ---------------------------------------------------------
-    def publish_to_marketplace(self, name: str, description: str, author: str = "", tags: list[str] | None = None) -> dict[str, Any]:
+    def publish_to_marketplace(
+        self, name: str, description: str, author: str = "", tags: list[str] | None = None
+    ) -> dict[str, Any]:
         """Publish a local plugin to the shared marketplace."""
         pid = name.replace("/", "_").replace("@", "")
         if pid not in self._installed:
             return {"status": "not_found", "needs_install_first": True}
         mkt = self._load_json(self._marketplace_path) or {}
         mkt[pid] = {
-            "name": name, "description": description, "author": author,
-            "tags": tags or [], "version": self._installed[pid]["version"],
+            "name": name,
+            "description": description,
+            "author": author,
+            "tags": tags or [],
+            "version": self._installed[pid]["version"],
             "published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
         self._save_json(self._marketplace_path, mkt)
@@ -141,7 +154,9 @@ class PluginRegistry:
     @staticmethod
     def _save_json(path: Path, obj: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        path.write_text(
+            json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
 
     @staticmethod
     def _load_json(path: Path) -> Any | None:

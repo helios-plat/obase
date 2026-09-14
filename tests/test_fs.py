@@ -56,6 +56,7 @@ class TestCleanupOldRuns:
         old_dir = tmp_path / "work" / "old-run"
         old_dir.mkdir(parents=True)
         import os
+
         os.utime(old_dir, (0, 0))
         removed = FS.cleanup_old_runs(max_age_seconds=1)
         assert any(p.name == "old-run" for p in removed)

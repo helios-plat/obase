@@ -5,6 +5,7 @@ IO dependencies injected via callables/protocols.
 
 depends_on_external: (none — IO injected)
 """
+
 from __future__ import annotations
 
 from obase.ohlcv_store.model import OhlcvBar, OhlcvStoreError

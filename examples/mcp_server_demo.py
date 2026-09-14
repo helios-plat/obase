@@ -21,7 +21,6 @@ from mcp.shared.memory import create_client_server_memory_streams
 
 from obase.mcp_server import MCPServer, SkillDef
 
-
 # ---------------------------------------------------------------------------
 # Skill 1: Generate video
 # ---------------------------------------------------------------------------
@@ -101,7 +100,7 @@ async def _demo() -> None:
     server.register_skill(list_runs_skill)
 
     print("=== obase.mcp_server Demo ===")
-    print(f"Server: hevi v5.0.0  |  Skills: 2")
+    print("Server: hevi v5.0.0  |  Skills: 2")
     print()
 
     # Serialise SkillDef with camelCase alias (MCP wire format)

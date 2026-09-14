@@ -5,6 +5,7 @@ upgrade request, tier approval).
 
 depends_on_external: resend
 """
+
 from __future__ import annotations
 
 from obase.email_client.sender import EmailClientError
@@ -40,6 +41,4 @@ def __getattr__(name: str):  # noqa: ANN204
             "send_upgrade_request_notification": send_upgrade_request_notification,
         }
         return _funcs[name]
-    raise AttributeError(
-        f"module 'obase.email_client' has no attribute {name!r}"
-    )
+    raise AttributeError(f"module 'obase.email_client' has no attribute {name!r}")

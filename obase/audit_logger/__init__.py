@@ -1,4 +1,5 @@
 """audit_logger — Structured decision audit logging."""
+
 from __future__ import annotations
 
 import json
@@ -41,14 +42,16 @@ class AuditLogger:
             diff: Optional before/after diff.
             metadata: Optional extra metadata.
         """
-        self._entries.append({
-            "timestamp": time.time(),
-            "fingerprint": fingerprint,
-            "action": action,
-            "actor": actor,
-            "diff": diff,
-            "metadata": metadata,
-        })
+        self._entries.append(
+            {
+                "timestamp": time.time(),
+                "fingerprint": fingerprint,
+                "action": action,
+                "actor": actor,
+                "diff": diff,
+                "metadata": metadata,
+            }
+        )
 
     @property
     def entries(self) -> list[dict[str, Any]]:

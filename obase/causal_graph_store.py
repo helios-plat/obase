@@ -152,7 +152,7 @@ class CausalGraphStore:
         """Serialize to a JSON-safe dict (alias of ``to_dict``)."""
         return self.to_dict()
 
-    def deserialize(self, data: dict[str, Any] | str) -> "CausalGraphStore":
+    def deserialize(self, data: dict[str, Any] | str) -> CausalGraphStore:
         """Load from a dict (or JSON string) produced by ``serialize``/``to_dict``."""
         if isinstance(data, str):
             data = json.loads(data)
@@ -161,7 +161,7 @@ class CausalGraphStore:
         return self
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CausalGraphStore":
+    def from_dict(cls, data: dict[str, Any]) -> CausalGraphStore:
         store = cls()
         for node, attrs in (data.get("nodes") or {}).items():
             store.add_node(node, **attrs)
@@ -170,7 +170,7 @@ class CausalGraphStore:
         return store
 
     # ── 反事实支持: 图割裂 (Graph Mutilation) ───────────────────────
-    def mutilated_copy(self, target_node: str) -> "CausalGraphStore":
+    def mutilated_copy(self, target_node: str) -> CausalGraphStore:
         """Return a copy with ALL of ``target_node``'s incoming edges removed —
         the classic do-calculus Graph Mutilation. The target's own distribution
         is then forced by the intervention value (see oprim._do_calculus_intervention)."""

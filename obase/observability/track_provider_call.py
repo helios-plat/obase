@@ -8,6 +8,7 @@ Example:
         result = await some_api_call()
         ctx["status"] = "ok"
 """
+
 from __future__ import annotations
 
 import time

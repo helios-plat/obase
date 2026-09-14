@@ -43,7 +43,8 @@ class CheckpointStore:
         row = _select_one(self._conn(), "SELECT key FROM checkpoints WHERE key = ?", (safe,))
         if row:
             self._conn().execute(
-                "UPDATE checkpoints SET payload = ?, updated_at = strftime('%s','now') WHERE key = ?",
+                "UPDATE checkpoints SET payload = ?, updated_at = "
+                "strftime('%s','now') WHERE key = ?",
                 (compressed, safe),
             )
         else:
@@ -56,7 +57,9 @@ class CheckpointStore:
 
     def load(self, key: str) -> dict[str, Any] | None:
         """Load a checkpoint snapshot, or None if not found."""
-        row = _select_one(self._conn(), "SELECT payload FROM checkpoints WHERE key = ?", (self._safe(key),))
+        row = _select_one(
+            self._conn(), "SELECT payload FROM checkpoints WHERE key = ?", (self._safe(key),)
+        )
         if row is None:
             return None
         try:
@@ -119,11 +122,13 @@ class CheckpointStore:
 
 def _compress(payload: str) -> bytes:
     import gzip
+
     return gzip.compress(payload.encode("utf-8"))
 
 
 def _decompress(data: bytes) -> str:
     import gzip
+
     return gzip.decompress(data).decode("utf-8")
 
 

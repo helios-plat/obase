@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +54,9 @@ class DebouncedMemoryQueue:
         if data is None:
             return
         path = self._base / f"{_safe(key)}.json"
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
 
     # -- load ----------------------------------------------------------------
     def load(self, key: str) -> dict[str, Any]:

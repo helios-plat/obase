@@ -10,15 +10,14 @@ file locking for multi-agent safety.
 from __future__ import annotations
 
 import json
-import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -28,55 +27,92 @@ def _now_iso() -> str:
 STATUSES = ("pending", "in_progress", "completed", "blocked")
 PRIORITIES = ("low", "medium", "high", "urgent")
 MSG_TYPES = (
-    "message", "join_request", "join_approved", "join_rejected",
-    "plan_approval_request", "plan_approved", "plan_rejected",
-    "shutdown_request", "shutdown_approved", "shutdown_rejected",
-    "idle", "broadcast",
+    "message",
+    "join_request",
+    "join_approved",
+    "join_rejected",
+    "plan_approval_request",
+    "plan_approved",
+    "plan_rejected",
+    "shutdown_request",
+    "shutdown_approved",
+    "shutdown_rejected",
+    "idle",
+    "broadcast",
 )
 
 
 def make_team_member(name: str, **kw: Any) -> dict[str, Any]:
     return {
-        "name": name, "user": "", "agent_id": uuid.uuid4().hex[:12],
+        "name": name,
+        "user": "",
+        "agent_id": uuid.uuid4().hex[:12],
         "agent_type": kw.pop("agent_type", "general-purpose"),
-        "joined_at": _now_iso(), **kw,
+        "joined_at": _now_iso(),
+        **kw,
     }
 
 
 def make_team_config(
-    name: str, description: str = "", lead_agent_id: str = "",
-    members: list[dict[str, Any]] | None = None, budget_cents: float = 0.0,
+    name: str,
+    description: str = "",
+    lead_agent_id: str = "",
+    members: list[dict[str, Any]] | None = None,
+    budget_cents: float = 0.0,
 ) -> dict[str, Any]:
     return {
-        "name": name, "description": description,
-        "lead_agent_id": lead_agent_id, "created_at": _now_iso(),
-        "members": members or [], "budget_cents": budget_cents,
+        "name": name,
+        "description": description,
+        "lead_agent_id": lead_agent_id,
+        "created_at": _now_iso(),
+        "members": members or [],
+        "budget_cents": budget_cents,
     }
 
 
 def make_task(
-    subject: str, description: str = "", status: str = "pending",
-    priority: str = "medium", owner: str = "", blocks: list[str] | None = None,
+    subject: str,
+    description: str = "",
+    status: str = "pending",
+    priority: str = "medium",
+    owner: str = "",
+    blocks: list[str] | None = None,
     blocked_by: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
-        "id": uuid.uuid4().hex[:8], "subject": subject,
-        "description": description, "status": status, "priority": priority,
-        "owner": owner, "locked_by": "", "locked_at": "",
-        "blocks": blocks or [], "blocked_by": blocked_by or [],
-        "started_at": "", "created_at": _now_iso(), "updated_at": _now_iso(),
+        "id": uuid.uuid4().hex[:8],
+        "subject": subject,
+        "description": description,
+        "status": status,
+        "priority": priority,
+        "owner": owner,
+        "locked_by": "",
+        "locked_at": "",
+        "blocks": blocks or [],
+        "blocked_by": blocked_by or [],
+        "started_at": "",
+        "created_at": _now_iso(),
+        "updated_at": _now_iso(),
         "metadata": {},
     }
 
 
 def make_message(
-    from_agent: str, to: str | None = None, content: str | None = None,
-    msg_type: str = "message", request_id: str | None = None, **kw: Any,
+    from_agent: str,
+    to: str | None = None,
+    content: str | None = None,
+    msg_type: str = "message",
+    request_id: str | None = None,
+    **kw: Any,
 ) -> dict[str, Any]:
     return {
-        "type": msg_type, "from": from_agent, "to": to,
-        "content": content, "request_id": request_id or uuid.uuid4().hex[:8],
-        "timestamp": _now_iso(), **{k: v for k, v in kw.items() if v is not None},
+        "type": msg_type,
+        "from": from_agent,
+        "to": to,
+        "content": content,
+        "request_id": request_id or uuid.uuid4().hex[:8],
+        "timestamp": _now_iso(),
+        **{k: v for k, v in kw.items() if v is not None},
     }
 
 
@@ -105,7 +141,10 @@ class TeamRegistry:
 
     # -- team CRUD ---------------------------------------------------------
     def create_team(
-        self, name: str, description: str = "", lead_agent_id: str = "",
+        self,
+        name: str,
+        description: str = "",
+        lead_agent_id: str = "",
         budget_cents: float = 0.0,
     ) -> dict[str, Any]:
         if self._config_path(name).exists():
@@ -124,7 +163,8 @@ class TeamRegistry:
             return []
         return [
             self._load_json(root / d / "config.json")
-            for d in root.iterdir() if d.is_dir()
+            for d in root.iterdir()
+            if d.is_dir()
             if (root / d / "config.json").exists()
         ]
 
@@ -189,7 +229,14 @@ class TeamRegistry:
         return False
 
     def lock_task(self, team_name: str, task_id: str, agent_name: str) -> bool:
-        return self.update_task(team_name, task_id, status="in_progress", locked_by=agent_name, locked_at=_now_iso(), started_at=_now_iso())
+        return self.update_task(
+            team_name,
+            task_id,
+            status="in_progress",
+            locked_by=agent_name,
+            locked_at=_now_iso(),
+            started_at=_now_iso(),
+        )
 
     # -- messages / inbox --------------------------------------------------
     def _inbox_dir(self, team_name: str, agent_name: str) -> Path:
@@ -210,7 +257,9 @@ class TeamRegistry:
         self._save_json(inbox / fname, msg)
         return msg
 
-    def receive_messages(self, team_name: str, agent_name: str, limit: int = 10) -> list[dict[str, Any]]:
+    def receive_messages(
+        self, team_name: str, agent_name: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
         inbox = self._inbox_dir(team_name, agent_name)
         msgs: list[dict[str, Any]] = []
         for f in sorted(inbox.glob("*.json")):
@@ -228,13 +277,16 @@ class TeamRegistry:
         for m in members:
             if m["name"] == from_agent:
                 continue
-            msg = make_message(from_agent=from_agent, to=m["name"], content=content, msg_type="broadcast")
+            msg = make_message(
+                from_agent=from_agent, to=m["name"], content=content, msg_type="broadcast"
+            )
             sent.append(self.send_message(team_name, msg))
         return sent
 
     # -- helpers -----------------------------------------------------------
     def cleanup(self, team_name: str) -> bool:
         import shutil
+
         d = self._team_dir(team_name)
         if d.exists():
             shutil.rmtree(d)
@@ -244,7 +296,9 @@ class TeamRegistry:
     @staticmethod
     def _save_json(path: Path, obj: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        path.write_text(
+            json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
 
     @staticmethod
     def _load_json(path: Path) -> Any | None:
