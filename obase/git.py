@@ -55,5 +55,9 @@ async def run_git(
             returncode=proc.returncode or 0,
         )
     except TimeoutError:
-        proc.kill()
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            # The subprocess may have exited during the timeout race.
+            pass
         raise TimeoutError(f"git {args[0]!r} timed out after {timeout}s") from None
