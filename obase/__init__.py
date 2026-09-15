@@ -138,6 +138,7 @@ from .debounced_memory_queue import DebouncedMemoryQueue
 from .knowledge_store import KnowledgeStore
 from .local_sandbox_pool import HoneypotAccessError, LocalSandboxPool, SandboxExecutionResult
 from .plugin_registry import PluginRegistry
+from .sandbox_provider import FullSystemSandboxProvider, SandboxProviderError
 from .support_bundle_pack import support_bundle_pack
 from .team_registry import (
     TeamRegistry,
@@ -239,6 +240,8 @@ __all__ = [
     "HoneypotAccessError",
     "LocalSandboxPool",
     "SandboxExecutionResult",
+    "FullSystemSandboxProvider",
+    "SandboxProviderError",
     "PluginRegistry",
     "support_bundle_pack",
     "TeamRegistry",
