@@ -111,7 +111,7 @@ async def test_real_binaries_available():
 async def test_opencode_real_run_resume_cancel_status():
     adapter = OpenCodeHarnessAdapter(timeout_s=90)
     run = await adapter.run("reply with exactly: HARNESS_OK")
-    assert run.status == "ok", f"opencode run failed: {run.error}"
+    assert run.status == "completed", f"opencode run failed: {run.error}"
     assert "HARNESS_OK" in run.output
     assert run.native_metadata.get("harness_session")
 
@@ -121,7 +121,7 @@ async def test_opencode_real_run_resume_cancel_status():
     assert st["binary_version"]
 
     resumed = await adapter.resume(run.run_id, "reply with exactly: HARNESS_RESUMED")
-    assert resumed.status == "ok", f"opencode resume failed: {resumed.error}"
+    assert resumed.status == "completed", f"opencode resume failed: {resumed.error}"
     assert "HARNESS_RESUMED" in resumed.output
 
     cancelled = await adapter.cancel(run.run_id)

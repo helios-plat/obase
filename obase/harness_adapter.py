@@ -24,13 +24,19 @@ import shutil
 import signal
 import time
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 from obase.provider_routing import ProtocolFamily
 
 __all__ = [
     "HarnessRunResult",
+    "HarnessRunRequest",
+    "HarnessActivity",
+    "ActivityKind",
+    "HarnessErrorKind",
     "HarnessCapabilities",
     "HarnessAdapter",
     "BaseCLIHarnessAdapter",
@@ -38,6 +44,10 @@ __all__ = [
     "ClaudeCodeHarnessAdapter",
     "OpenCodeHarnessAdapter",
     "HARNESS_CATEGORY",
+    "RESULT_STATUSES",
+    "TERMINAL_STATUSES",
+    "normalize_status",
+    "apply_cleanup_outcome",
     "register_harness_adapters",
     "discover_harness_capabilities",
 ]
@@ -50,21 +60,312 @@ HARNESS_CATEGORY = "harness"
 # ---------------------------------------------------------------------------
 
 
+#: Canonical harness execution statuses (D2, single authority).
+#: ``partial`` = execution ended with incomplete but usable output.
+RESULT_STATUSES = ("completed", "failed", "cancelled", "timeout", "partial")
+
+#: Every canonical result status is a terminal observation of the harness
+#: execution itself. ("进程退出" only means harness-terminal — it never
+#: implies goal acceptance; there is no goal-acceptance field by design.)
+TERMINAL_STATUSES = ("completed", "failed", "cancelled", "timeout", "partial")
+
+_STATUS_ALIASES = {
+    "ok": "completed",
+    "success": "completed",
+    "succeeded": "completed",
+    "done": "completed",
+    "completed": "completed",
+    "error": "failed",
+    "failed": "failed",
+    "failure": "failed",
+    "canceled": "cancelled",
+    "cancelled": "cancelled",
+    "timeout": "timeout",
+    "timed_out": "timeout",
+    "partial": "partial",
+    "incomplete": "partial",
+}
+
+
+def normalize_status(value: Any, *, default: str = "failed") -> str:
+    """Normalize an upstream status string to the canonical set, fail-closed.
+
+    Unknown values never default to ``completed`` — they map to ``default``
+    (``"failed"`` unless the caller explicitly passes another canonical
+    status such as ``"partial"`` for incomplete-but-usable output).
+    """
+    if isinstance(value, str):
+        hit = _STATUS_ALIASES.get(value.strip().lower())
+        if hit is not None:
+            return hit
+    if default in RESULT_STATUSES:
+        return default
+    return "failed"
+
+
+class HarnessErrorKind(StrEnum):
+    """Minimal unified harness error taxonomy (D2, single authority).
+
+    Carries no retry/disposition semantics — transient/permanent judgement
+    and resume disposition belong to the project runtime (D3), never here.
+    The native error text is always preserved alongside.
+    """
+
+    CONFIGURATION = "configuration"
+    UNAVAILABLE = "unavailable"
+    AUTHENTICATION = "authentication"
+    RATE_LIMITED = "rate_limited"
+    PROTOCOL = "protocol"
+    PROCESS = "process"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+    RESUME_REJECTED = "resume_rejected"
+    EXECUTION = "execution"
+
+    @classmethod
+    def coerce(cls, value: HarnessErrorKind | str | None) -> HarnessErrorKind | None:
+        """Coerce a stored string to a member; ``None`` stays ``None``."""
+        if value is None or isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            try:
+                return cls(value.strip().lower())
+            except ValueError:
+                pass
+        valid = sorted(member.value for member in cls)
+        raise ValueError(f"unknown harness error kind {value!r}; expected one of {valid}")
+
+
+_AUTH_PATTERNS = ("oauth", "unauthorized", "unauthenticated", "401", "authentication")
+_RATE_LIMIT_PATTERNS = ("rate limit", "rate_limit", "429", "too many requests", "usage limit")
+
+
+def classify_process_error(stderr: str, returncode: int) -> HarnessErrorKind:
+    """Classify a finished-process failure from direct evidence only.
+
+    Auth/rate-limit kinds require explicit marker text in stderr; anything
+    else with a nonzero exit is ``PROCESS``. The raw text is never consumed
+    — it stays on the result ``error`` field verbatim.
+    """
+    text = (stderr or "").lower()
+    if any(marker in text for marker in _AUTH_PATTERNS):
+        return HarnessErrorKind.AUTHENTICATION
+    if any(marker in text for marker in _RATE_LIMIT_PATTERNS):
+        return HarnessErrorKind.RATE_LIMITED
+    return HarnessErrorKind.PROCESS
+
+
+class ActivityKind(StrEnum):
+    """Structured harness activity kinds (D2, single authority)."""
+
+    MESSAGE = "message"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    TERMINAL = "terminal"
+    STATUS = "status"
+
+    @classmethod
+    def coerce(cls, value: ActivityKind | str) -> ActivityKind:
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            try:
+                return cls(value.strip().lower())
+            except ValueError:
+                pass
+        valid = sorted(member.value for member in cls)
+        raise ValueError(f"unknown activity kind {value!r}; expected one of {valid}")
+
+
+@dataclass(frozen=True)
+class HarnessActivity:
+    """One structured harness execution activity (static observation).
+
+    Tool activities carry ``tool_name`` + ``tool_arguments`` (reference, not
+    secrets) + ``tool_status``/``tool_result_ref`` — never a bare bool or
+    free text alone. No activity is ever fabricated: providers that cannot
+    observe an activity declare it unsupported via capabilities.
+    """
+
+    kind: ActivityKind
+    sequence: int
+    run_id: str
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    turn_id: str | None = None
+    timestamp: float = field(default_factory=time.time)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    tool_name: str | None = None
+    tool_arguments: Mapping[str, Any] = field(default_factory=dict)
+    tool_status: str | None = None
+    tool_result_ref: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", ActivityKind.coerce(self.kind))
+        if isinstance(self.sequence, bool) or not isinstance(self.sequence, int):
+            raise ValueError("HarnessActivity.sequence must be an int")
+        if self.sequence < 0:
+            raise ValueError("HarnessActivity.sequence must be >= 0")
+        object.__setattr__(self, "payload", dict(self.payload))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "tool_arguments", dict(self.tool_arguments))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "sequence": self.sequence,
+            "timestamp": self.timestamp,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "turn_id": self.turn_id,
+            "payload": dict(self.payload),
+            "metadata": dict(self.metadata),
+            "tool_name": self.tool_name,
+            "tool_arguments": dict(self.tool_arguments),
+            "tool_status": self.tool_status,
+            "tool_result_ref": self.tool_result_ref,
+        }
+
+
+@dataclass(frozen=True)
+class HarnessRunRequest:
+    """Static execution request envelope (no project business objects).
+
+    Never carries project goal/session business objects or any mutable run
+    state — only the inputs one harness execution needs.
+    """
+
+    prompt: str
+    cwd: str | None = None
+    session_id: str | None = None
+    timeout_s: float | None = None
+    env: Mapping[str, str] = field(default_factory=dict)
+    options: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.prompt:
+            raise ValueError("HarnessRunRequest.prompt must not be empty")
+        object.__setattr__(self, "env", dict(self.env))
+        object.__setattr__(self, "options", dict(self.options))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def to_kwargs(self) -> dict[str, Any]:
+        """Project the request onto adapter ``run()`` keyword arguments."""
+        kwargs: dict[str, Any] = dict(self.options)
+        if self.cwd is not None:
+            kwargs["cwd"] = self.cwd
+        if self.timeout_s is not None:
+            kwargs["timeout_s"] = self.timeout_s
+        if self.session_id is not None:
+            kwargs["session"] = self.session_id
+        return kwargs
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prompt": self.prompt,
+            "cwd": self.cwd,
+            "session_id": self.session_id,
+            "timeout_s": self.timeout_s,
+            "env": dict(self.env),
+            "options": dict(self.options),
+            "metadata": dict(self.metadata),
+        }
+
+
 @dataclass
 class HarnessRunResult:
-    """统一 harness 运行结果。"""
+    """统一 harness 运行结果 (D2 canonical execution ABI)。
+
+    Identity: ``run_id`` (this execution) vs ``session_id`` (resumable
+    upstream agent session) vs ``turn_id`` (one turn in a session) vs
+    ``parent_run_id`` (the run this execution resumes/continues) — four
+    distinct ids, never conflated.
+
+    ``terminal_observed=True`` means the upstream already produced an
+    authoritative terminal result; later cleanup outcomes must never
+    re-judge it (see :func:`apply_cleanup_outcome`).
+    """
 
     run_id: str
-    status: str  # "ok" | "error" | "cancelled" | "running"
+    status: str  # canonical: one of RESULT_STATUSES
     output: str = ""
     usage: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     native_metadata: dict[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    turn_id: str | None = None
+    parent_run_id: str | None = None
+    terminal_observed: bool = False
+    error_kind: HarnessErrorKind | str | None = None
+    activities: tuple[HarnessActivity, ...] = ()
+
+    def __post_init__(self) -> None:
+        self.error_kind = HarnessErrorKind.coerce(self.error_kind)
+        if isinstance(self.activities, (list, tuple)):
+            for item in self.activities:
+                if not isinstance(item, HarnessActivity):
+                    raise TypeError("HarnessRunResult.activities must hold HarnessActivity")
+            self.activities = tuple(self.activities)
+        else:
+            raise TypeError("HarnessRunResult.activities must be a list/tuple")
+        self.terminal_observed = bool(self.terminal_observed)
+
+    @property
+    def is_terminal(self) -> bool:
+        """Whether the recorded status is a terminal observation."""
+        return self.status in TERMINAL_STATUSES
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+            "turn_id": self.turn_id,
+            "parent_run_id": self.parent_run_id,
+            "status": self.status,
+            "output": self.output,
+            "usage": dict(self.usage),
+            "error": self.error,
+            "error_kind": self.error_kind.value if self.error_kind else None,
+            "terminal_observed": self.terminal_observed,
+            "activities": [item.to_dict() for item in self.activities],
+            "native_metadata": dict(self.native_metadata),
+        }
+
+
+def apply_cleanup_outcome(result: HarnessRunResult, cleanup_error: str | None) -> HarnessRunResult:
+    """Fold a post-terminal cleanup outcome into a result without re-judging.
+
+    Once ``terminal_observed`` is set, pipe/subprocess/stream teardown
+    timeouts are recorded into ``native_metadata`` only — the terminal
+    status/output/error never change. Non-terminal results with a cleanup
+    error fail closed to ``failed``.
+    """
+    if result.terminal_observed:
+        if cleanup_error:
+            merged = dict(result.native_metadata)
+            merged["cleanup_error_ignored"] = cleanup_error
+            return replace(result, native_metadata=merged)
+        return result
+    if cleanup_error:
+        return replace(
+            result,
+            status="failed",
+            error=result.error or cleanup_error,
+            error_kind=result.error_kind or HarnessErrorKind.EXECUTION,
+        )
+    return result
 
 
 @dataclass
 class HarnessCapabilities:
-    """统一 capability 描述。"""
+    """统一 capability 描述。
+
+    D2: this stays a harness-specific typed view. The generic runtime
+    capability authority remains ``D1 ProviderSpec.capabilities`` +
+    ``lifecycle`` — see :meth:`lifecycle_matrix` for the projection.
+    ``as_dict`` keeps the original six transport keys (pinned contract).
+    """
 
     streaming: bool = False
     resume: bool = False
@@ -72,6 +373,9 @@ class HarnessCapabilities:
     tool_calls: bool = False
     workspace: bool = False
     diff: bool = False
+    tool_activity: bool = False
+    session: bool = False
+    turn_identity: bool = False
 
     def as_dict(self) -> dict[str, bool]:
         return {
@@ -82,6 +386,27 @@ class HarnessCapabilities:
             "workspace": self.workspace,
             "diff": self.diff,
         }
+
+    def lifecycle_matrix(self) -> dict[str, bool]:
+        """Project onto the D1 lifecycle/support matrix (no second authority)."""
+        return {
+            "run": True,
+            "stream": self.streaming,
+            "status": True,
+            "cancel": self.cancel,
+            "resume": self.resume,
+        }
+
+    def supports_activity(self, kind: ActivityKind | str) -> bool:
+        """Whether this harness can honestly observe one activity kind."""
+        resolved = ActivityKind.coerce(kind)
+        if resolved in (
+            ActivityKind.MESSAGE,
+            ActivityKind.TERMINAL,
+            ActivityKind.STATUS,
+        ):
+            return True
+        return self.tool_activity
 
 
 @runtime_checkable
@@ -193,11 +518,13 @@ class BaseCLIHarnessAdapter:
                 cwd=kwargs.get("cwd"),
             )
         except FileNotFoundError as exc:
-            tracked.status = "error"
+            tracked.status = "failed"
             return HarnessRunResult(
                 run_id=run_id,
-                status="error",
+                status="failed",
                 error=str(exc),
+                error_kind=HarnessErrorKind.UNAVAILABLE,
+                terminal_observed=True,
                 native_metadata={"binary": self.binary, "argv": argv},
             )
         tracked.proc = proc
@@ -208,11 +535,13 @@ class BaseCLIHarnessAdapter:
                 proc.kill()
             except ProcessLookupError:
                 pass
-            tracked.status = "cancelled"
+            tracked.status = "timeout"
             return HarnessRunResult(
                 run_id=run_id,
-                status="cancelled",
+                status="timeout",
                 error="timeout",
+                error_kind=HarnessErrorKind.TIMEOUT,
+                terminal_observed=True,
                 native_metadata={"binary": self.binary, "timeout_s": timeout},
             )
         stdout = out_b.decode(errors="ignore")
@@ -224,19 +553,34 @@ class BaseCLIHarnessAdapter:
                 run_id=run_id,
                 status="cancelled",
                 error="cancelled",
+                error_kind=HarnessErrorKind.CANCELLED,
+                terminal_observed=True,
+                session_id=tracked.harness_session,
                 native_metadata={"binary": self.binary, "returncode": rc},
             )
         output, usage, error = self.parse_output(stdout, stderr, rc)
-        tracked.status = "ok" if error is None else "error"
+        tracked.status = "completed" if error is None else "failed"
         session = self.extract_session(stdout, stderr)
         if session:
             tracked.harness_session = session
+        error_kind = None if error is None else classify_process_error(stderr, rc)
+        terminal = HarnessActivity(
+            kind=ActivityKind.TERMINAL,
+            sequence=0,
+            run_id=run_id,
+            session_id=tracked.harness_session,
+            payload={"status": tracked.status, "returncode": rc},
+        )
         return HarnessRunResult(
             run_id=run_id,
             status=tracked.status,
             output=output,
             usage=usage,
             error=error,
+            error_kind=error_kind,
+            terminal_observed=True,
+            session_id=tracked.harness_session,
+            activities=(terminal,),
             native_metadata={
                 "binary": self.binary,
                 "argv": argv,
@@ -256,16 +600,26 @@ class BaseCLIHarnessAdapter:
         return await self._spawn(self.build_run_argv(prompt, **kwargs), **kwargs)
 
     async def resume(self, run_id: str, prompt: str = "", **kwargs: Any) -> HarnessRunResult:
+        """Resume a recorded harness session (D2 ABI).
+
+        Rejection (no resumable session) is itself an authoritative,
+        terminal outcome: status ``failed`` + ``RESUME_REJECTED``. No
+        D3 disposition is decided here — callers own retry/fresh policy.
+        """
         tracked = self._runs.get(run_id)
         session = kwargs.get("session") or (tracked.harness_session if tracked else None)
         if not session:
             return HarnessRunResult(
                 run_id=run_id,
-                status="error",
+                status="failed",
                 error="no harness session recorded for resume",
+                error_kind=HarnessErrorKind.RESUME_REJECTED,
+                terminal_observed=True,
+                parent_run_id=run_id,
                 native_metadata={"binary": self.binary},
             )
-        return await self._spawn(self.build_resume_argv(session, prompt, **kwargs), **kwargs)
+        result = await self._spawn(self.build_resume_argv(session, prompt, **kwargs), **kwargs)
+        return replace(result, parent_run_id=run_id, session_id=session)
 
     async def cancel(self, run_id: str) -> bool:
         tracked = self._runs.get(run_id)
@@ -316,6 +670,43 @@ class BaseCLIHarnessAdapter:
         if result.output:
             yield result.output
 
+    async def stream_activities(self, prompt: str, **kwargs: Any) -> AsyncIterator[HarnessActivity]:
+        """Activity-typed view over one execution (D2, extends text stream).
+
+        The CLI transports below have no live event channel, so activities
+        are projected from the authoritative terminal observation: message
+        (real output text) + status + terminal, strictly ordered. Tool
+        activities appear only when honestly observed — none of the current
+        adapters observe them (``tool_activity`` capability is ``False``),
+        so none are ever fabricated here.
+        """
+        result = await self.run(prompt, **kwargs)
+        sequence = 0
+        if result.output:
+            yield HarnessActivity(
+                kind=ActivityKind.MESSAGE,
+                sequence=sequence,
+                run_id=result.run_id,
+                session_id=result.session_id,
+                payload={"text": result.output},
+            )
+            sequence += 1
+        yield HarnessActivity(
+            kind=ActivityKind.STATUS,
+            sequence=sequence,
+            run_id=result.run_id,
+            session_id=result.session_id,
+            payload={"status": result.status, "error": result.error},
+        )
+        sequence += 1
+        yield HarnessActivity(
+            kind=ActivityKind.TERMINAL,
+            sequence=sequence,
+            run_id=result.run_id,
+            session_id=result.session_id,
+            payload={"status": result.status, "terminal_observed": True},
+        )
+
     async def workspace(self, run_id: str) -> dict[str, Any]:
         return {"run_id": run_id, "workspace": None, "supported": False}
 
@@ -340,6 +731,9 @@ class CodexHarnessAdapter(BaseCLIHarnessAdapter):
         tool_calls=True,
         workspace=True,
         diff=False,
+        tool_activity=False,
+        session=True,
+        turn_identity=False,
     )
 
     def build_run_argv(self, prompt: str, **kwargs: Any) -> list[str]:
@@ -367,6 +761,9 @@ class ClaudeCodeHarnessAdapter(BaseCLIHarnessAdapter):
         tool_calls=True,
         workspace=True,
         diff=False,
+        tool_activity=False,
+        session=True,
+        turn_identity=False,
     )
 
     def build_run_argv(self, prompt: str, **kwargs: Any) -> list[str]:
@@ -408,6 +805,9 @@ class OpenCodeHarnessAdapter(BaseCLIHarnessAdapter):
         tool_calls=True,
         workspace=True,
         diff=False,
+        tool_activity=False,
+        session=True,
+        turn_identity=False,
     )
 
     def build_run_argv(self, prompt: str, **kwargs: Any) -> list[str]:

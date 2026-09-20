@@ -187,6 +187,14 @@ __all__ = [
     "HarnessAdapterError",
     "HarnessCapabilities",
     "HarnessRunResult",
+    "HarnessRunRequest",
+    "HarnessActivity",
+    "ActivityKind",
+    "HarnessErrorKind",
+    "RESULT_STATUSES",
+    "TERMINAL_STATUSES",
+    "normalize_status",
+    "apply_cleanup_outcome",
     "BaseCLIHarnessAdapter",
     "CodexHarnessAdapter",
     "ClaudeCodeHarnessAdapter",
@@ -267,15 +275,23 @@ from obase.crypto import CryptoError, decrypt_token, derive_master_key, encrypt_
 from obase.git import GitResult, run_git
 from obase.gpu import GpuScheduler, LocalModelProvider, ModelRegistry
 from obase.harness_adapter import (
+    RESULT_STATUSES,
+    TERMINAL_STATUSES,
+    ActivityKind,
     BaseCLIHarnessAdapter,
     ClaudeCodeHarnessAdapter,
     CodexHarnessAdapter,
+    HarnessActivity,
     HarnessAdapter,
     HarnessAdapterError,
     HarnessCapabilities,
+    HarnessErrorKind,
+    HarnessRunRequest,
     HarnessRunResult,
     OpenCodeHarnessAdapter,
+    apply_cleanup_outcome,
     discover_harness_capabilities,
+    normalize_status,
     register_harness_adapters,
 )
 from obase.http.dns_pinned_transport import (
