@@ -44,6 +44,25 @@ class McpClientRegistry:
         return cls._clients[name]
 
     @classmethod
+    def has(cls, name: str) -> bool:
+        """Whether a client handle is currently registered (side-effect free)."""
+        return name in cls._clients
+
+    @classmethod
+    def list_clients(cls) -> list[str]:
+        """Registered client names; a snapshot copy, never the live mapping."""
+        return list(cls._clients)
+
+    @classmethod
+    def unregister(cls, name: str) -> bool:
+        """Drop one client handle (targeted teardown).
+
+        Returns True when a handle was removed, False for unknown ids
+        (idempotent). Never touches ``_specs`` and never clears siblings.
+        """
+        return cls._clients.pop(name, None) is not None
+
+    @classmethod
     def spec(cls, name: str) -> MCPServerSpec:
         if name not in cls._specs:
             raise KeyError(f"MCP server spec {name!r} not registered")
@@ -73,3 +92,58 @@ class McpClientRegistry:
     def clear(cls) -> None:
         cls._clients.clear()
         cls._specs.clear()
+
+
+class McpResourcesError(RuntimeError):
+    """MCP resources/list+read negotiation or fetch error (fail-closed)."""
+
+
+async def _maybe_await(value: Any) -> Any:
+    import inspect as _inspect
+
+    if _inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def supports_resources(client: McpClientHandle) -> bool:
+    """Whether a handle observably implements resources/list+read.
+
+    The base :class:`McpClientHandle` contract only requires tools; resource
+    access is probed (method presence), never assumed. ``False`` means the
+    caller must treat resources as unsupported, not empty.
+    """
+    return callable(getattr(client, "list_resources", None)) and callable(
+        getattr(client, "read_resource", None)
+    )
+
+
+async def list_resources(client: McpClientHandle) -> list[dict[str, Any]]:
+    """List remote resources; fail closed when the handle lacks support.
+
+    A discovery failure raises — it is never reported as an empty result.
+    """
+    if not supports_resources(client):
+        raise McpResourcesError("resources: handle does not implement resources/list")
+    try:
+        result = await _maybe_await(client.list_resources())  # type: ignore[attr-defined]
+    except Exception as exc:
+        raise McpResourcesError(f"resources: list failed: {exc}") from exc
+    if not isinstance(result, list):
+        raise McpResourcesError("resources: list returned a non-list payload")
+    return [item for item in result if isinstance(item, dict)]
+
+
+async def read_resource(client: McpClientHandle, uri: str) -> dict[str, Any]:
+    """Read one remote resource by URI (passed through verbatim)."""
+    if not uri:
+        raise ValueError("read_resource: uri must not be empty")
+    if not supports_resources(client):
+        raise McpResourcesError(f"resources: handle does not implement resources/read ({uri!r})")
+    try:
+        result = await _maybe_await(client.read_resource(uri))  # type: ignore[attr-defined]
+    except Exception as exc:
+        raise McpResourcesError(f"resources: read {uri!r} failed: {exc}") from exc
+    if isinstance(result, dict):
+        return {"uri": uri, "content": result.get("content"), "raw": result}
+    return {"uri": uri, "content": result, "raw": result}
