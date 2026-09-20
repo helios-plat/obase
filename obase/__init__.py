@@ -178,6 +178,50 @@ __all__ = [
     # mcp_client
     "McpClientHandle",
     "McpClientRegistry",
+    # ------------------------------------------------------------------
+    # D0 canonical lineage reconciliation — runtime adapter lineage only
+    # (Veya-lineage provider_routing/tool_governance/agent_registry +
+    # standalone harness/acp/a2a adapters + ProviderRegistry spec wiring)
+    # ------------------------------------------------------------------
+    "HarnessAdapter",
+    "HarnessAdapterError",
+    "HarnessCapabilities",
+    "HarnessRunResult",
+    "BaseCLIHarnessAdapter",
+    "CodexHarnessAdapter",
+    "ClaudeCodeHarnessAdapter",
+    "OpenCodeHarnessAdapter",
+    "register_harness_adapters",
+    "discover_harness_capabilities",
+    "A2AAgentAdapter",
+    "A2AAdapterError",
+    "A2ACapabilities",
+    "A2AResult",
+    "normalize_a2a_result",
+    "ACPAgentAdapter",
+    "ACPAdapterError",
+    "ACPCapabilities",
+    "ACPSession",
+    "AgentRegistry",
+    "RegistryConflictError",
+    "register_agent",
+    "registry",
+    "ModelSpec",
+    "Pricing",
+    "ProviderCallRequest",
+    "ProviderHealth",
+    "ProviderSpec",
+    "UsageRecord",
+    "CredentialRef",
+    "Grant",
+    "MCPServerSpec",
+    "SecretRef",
+    "ToolCallRequest",
+    "ToolCallResult",
+    "ToolEffect",
+    "ToolKind",
+    "ToolSpec",
+    "redact_payload",
 ]
 
 # --- Stratum B3 obase submodules (v0.8.0) ---
@@ -197,10 +241,41 @@ from obase import (
     sympy_runtime,
 )
 from obase import config as config_loader
+from obase.a2a_adapter import (
+    A2AAdapterError,
+    A2AAgentAdapter,
+    A2ACapabilities,
+    A2AResult,
+    normalize_a2a_result,
+)
+from obase.acp_adapter import (
+    ACPAdapterError,
+    ACPAgentAdapter,
+    ACPCapabilities,
+    ACPSession,
+)
+from obase.agent_registry import (
+    AgentRegistry,
+    RegistryConflictError,
+    register_agent,
+    registry,
+)
 from obase.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from obase.crypto import CryptoError, decrypt_token, derive_master_key, encrypt_token
 from obase.git import GitResult, run_git
 from obase.gpu import GpuScheduler, LocalModelProvider, ModelRegistry
+from obase.harness_adapter import (
+    BaseCLIHarnessAdapter,
+    ClaudeCodeHarnessAdapter,
+    CodexHarnessAdapter,
+    HarnessAdapter,
+    HarnessAdapterError,
+    HarnessCapabilities,
+    HarnessRunResult,
+    OpenCodeHarnessAdapter,
+    discover_harness_capabilities,
+    register_harness_adapters,
+)
 from obase.http.dns_pinned_transport import (
     SSRFBlockedError,
     is_safe_ip,
@@ -222,4 +297,24 @@ from obase.persistence import (
     upsert_batch,
     vector_search,
 )
+from obase.provider_routing import (
+    ModelSpec,
+    Pricing,
+    ProviderCallRequest,
+    ProviderHealth,
+    ProviderSpec,
+    UsageRecord,
+)
 from obase.retry import RetryPolicy, retry_with_backoff
+from obase.tool_governance import (
+    CredentialRef,
+    Grant,
+    MCPServerSpec,
+    SecretRef,
+    ToolCallRequest,
+    ToolCallResult,
+    ToolEffect,
+    ToolKind,
+    ToolSpec,
+    redact_payload,
+)

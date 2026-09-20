@@ -11,6 +11,7 @@ from importlib.metadata import entry_points
 from typing import Any, Protocol, runtime_checkable
 
 from obase.exceptions import ProviderDiscoveryError, ProviderNotFoundError
+from obase.provider_routing import ProviderSpec
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ProviderRegistry:
     _images: dict[str, ImageGenCaller] = {}
     _generic: dict[str, dict[str, Any]] = {}
     _capabilities: dict[str, dict[str, Any]] = {}
+    _specs: dict[str, ProviderSpec] = {}
 
     @classmethod
     def get(cls) -> ProviderRegistry:
@@ -235,6 +237,25 @@ class ProviderRegistry:
             return dict(self._capabilities)
         return self._capabilities.get(name, {})
 
+    def register_spec(self, spec: ProviderSpec, replace: bool = False) -> None:
+        """Register execution metadata alongside the existing callable registry."""
+        if not replace and spec.name in self._specs:
+            raise OBaseRegistryConflict(
+                f"provider spec {spec.name!r} already registered. Use replace=True to override."
+            )
+        self._specs[spec.name] = spec
+
+    def spec(self, name: str) -> ProviderSpec:
+        """Return one typed provider spec."""
+        try:
+            return self._specs[name]
+        except KeyError as exc:
+            raise ProviderNotFoundError(f"provider spec {name!r} not registered") from exc
+
+    def list_specs(self) -> list[ProviderSpec]:
+        """Return registered provider metadata in registration order."""
+        return list(self._specs.values())
+
     # ------------------------------------------------------------------
     # Test helpers
     # ------------------------------------------------------------------
@@ -248,6 +269,7 @@ class ProviderRegistry:
         cls._images.clear()
         cls._generic.clear()
         cls._capabilities.clear()
+        cls._specs.clear()
 
     @classmethod
     def reset(cls) -> None:
@@ -264,6 +286,12 @@ __manifest__ = {
         {"name": "LLMCaller", "layer": "obase", "summary": "LLM 调用协议"},
         {"name": "VLMCaller", "layer": "obase", "summary": "VLM 调用协议"},
         {"name": "ImageGenCaller", "layer": "obase", "summary": "图像生成调用协议"},
+        {"name": "ProviderSpec", "layer": "obase", "summary": "Provider execution metadata"},
+        {"name": "ModelSpec", "layer": "obase", "summary": "Model capability and pricing metadata"},
+        {"name": "Pricing", "layer": "obase", "summary": "Provider/model pricing metadata"},
+        {"name": "ProviderHealth", "layer": "obase", "summary": "Provider health observation"},
+        {"name": "ProviderCallRequest", "layer": "obase", "summary": "Safe provider call request"},
+        {"name": "UsageRecord", "layer": "obase", "summary": "Normalized provider usage"},
         {"name": "OBaseRegistryConflict", "layer": "obase", "summary": "重复注册异常"},
     ],
 }
