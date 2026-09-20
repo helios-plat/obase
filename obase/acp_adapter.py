@@ -16,6 +16,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from obase.provider_routing import ProtocolFamily
+
 __all__ = [
     "ACPAgentAdapter",
     "ACPAdapterError",
@@ -69,6 +71,8 @@ class ACPAgentAdapter:
     transport 经注入的 async callable (json-rpc message -> response);
     不持有 ACP 之外的统一语义,不做 approval/delegation/项目态。
     """
+
+    protocol_family: ProtocolFamily = ProtocolFamily.ACP
 
     def __init__(self, *, transport: Any = None, timeout_s: float = 60.0) -> None:
         self.transport = transport

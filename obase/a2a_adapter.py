@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from obase.provider_routing import ProtocolFamily
+
 __all__ = [
     "A2AAgentAdapter",
     "A2AAdapterError",
@@ -106,6 +108,8 @@ class A2AAgentAdapter:
     transport 经注入的 async callable (message -> response) 或 agent base_url
     (httpx JSON-RPC) 二选一;不持有 delegation/selection/planning/重试/项目态。
     """
+
+    protocol_family: ProtocolFamily = ProtocolFamily.A2A
 
     def __init__(
         self,

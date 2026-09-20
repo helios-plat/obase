@@ -27,6 +27,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from obase.provider_routing import ProtocolFamily
+
 __all__ = [
     "HarnessRunResult",
     "HarnessCapabilities",
@@ -119,6 +121,7 @@ class BaseCLIHarnessAdapter:
 
     binary: str = ""
     adapter_name: str = "base"
+    protocol_family: ProtocolFamily = ProtocolFamily.HARNESS
     _capabilities: HarnessCapabilities = HarnessCapabilities()
 
     def __init__(self, *, binary: str | None = None, timeout_s: float = 120.0) -> None:

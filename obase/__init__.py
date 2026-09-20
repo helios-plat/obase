@@ -212,6 +212,8 @@ __all__ = [
     "ProviderHealth",
     "ProviderSpec",
     "UsageRecord",
+    "ProtocolFamily",
+    "tool_kind_to_protocol_family",
     "CredentialRef",
     "Grant",
     "MCPServerSpec",
@@ -300,10 +302,12 @@ from obase.persistence import (
 from obase.provider_routing import (
     ModelSpec,
     Pricing,
+    ProtocolFamily,
     ProviderCallRequest,
     ProviderHealth,
     ProviderSpec,
     UsageRecord,
+    tool_kind_to_protocol_family,
 )
 from obase.retry import RetryPolicy, retry_with_backoff
 from obase.tool_governance import (
