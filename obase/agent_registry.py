@@ -7,12 +7,20 @@ factory/loader callable; the Layer-4 gateway and the creation workflows use
 this as the single source of truth for "what agents/tools/workflows exist".
 
 3O element: ``obase.agent_registry`` (``AgentRegistry`` / decorators).
+
+D1 runtime role: ``register_runtime`` entries may *reference* the canonical
+``ProviderSpec`` descriptor by name and resolve it live from
+``ProviderRegistry`` (same object, never a field copy —
+PROVIDER_SPEC_AUTHORITY stays 1).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+
+from obase.exceptions import ProviderNotFoundError
+from obase.provider_routing import ProviderSpec
 
 REGISTRY_TYPES = ("agent", "tool", "workflow", "plugin_agent", "plugin_tool", "runtime")
 
@@ -74,6 +82,48 @@ class AgentRegistry:
     def reset(self) -> None:
         for t in self._entries:
             self._entries[t].clear()
+
+    # -- runtime role (D1: reference-only descriptor bridge) ------------------
+    def register_runtime(
+        self,
+        name: str,
+        func: Callable,
+        *,
+        spec: str | ProviderSpec | None = None,
+        func_name: str | None = None,
+        desc: str = "",
+    ) -> Callable:
+        """Register a ``runtime`` entry referencing a canonical descriptor.
+
+        Only the spec *reference* (its name) is stored under the ``"spec"``
+        key; descriptor fields are never copied here. Resolution always
+        goes through :meth:`runtime_descriptor` against ``ProviderRegistry``.
+        """
+        self.register("runtime", name, func, func_name=func_name, desc=desc)
+        if spec is not None:
+            ref = spec.name if isinstance(spec, ProviderSpec) else str(spec)
+            self._entries["runtime"][name]["spec"] = ref
+        return func
+
+    def runtime_descriptor(self, name: str) -> ProviderSpec | None:
+        """Resolve a runtime entry's descriptor (same object, live lookup).
+
+        Returns ``None`` when the entry has no ``spec`` reference or the
+        referenced spec is not registered. Never synthesizes or copies
+        descriptor state.
+        """
+        from obase.provider_registry import ProviderRegistry
+
+        entry = self.get("runtime", name)
+        if not entry:
+            return None
+        ref = entry.get("spec")
+        if not ref:
+            return None
+        try:
+            return ProviderRegistry.get().spec(ref)
+        except ProviderNotFoundError:
+            return None
 
 
 # process-wide singleton (mirrors AutoAgent's module-level registry)

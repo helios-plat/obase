@@ -17,6 +17,21 @@ from typing import Any
 __version__ = "0.31.0"
 
 # --- core imports: stdlib-only or light deps (structlog, yaml, httpx, pydantic) ---
+# --- D0 lineage reconciliation: B-lineage runtime adapters ---
+# (stdlib-only modules; eager import matches their provider_routing dependency)
+from obase.a2a_adapter import (
+    A2AAdapterError,
+    A2AAgentAdapter,
+    A2ACapabilities,
+    A2AResult,
+    normalize_a2a_result,
+)
+from obase.acp_adapter import (
+    ACPAdapterError,
+    ACPAgentAdapter,
+    ACPCapabilities,
+    ACPSession,
+)
 from obase.action import (
     ActionDecision,
     ActionEffect,
@@ -25,6 +40,12 @@ from obase.action import (
     AuditRecord,
     PolicyRule,
     redact_value,
+)
+from obase.agent_registry import (
+    AgentRegistry,
+    RegistryConflictError,
+    register_agent,
+    registry,
 )
 from obase.bootstrap import bootstrap, load_env
 from obase.browser import (
@@ -63,6 +84,26 @@ from obase.exceptions import (
 )
 from obase.fs import FS
 from obase.git import GitResult, run_git
+from obase.harness_adapter import (
+    RESULT_STATUSES,
+    TERMINAL_STATUSES,
+    ActivityKind,
+    BaseCLIHarnessAdapter,
+    ClaudeCodeHarnessAdapter,
+    CodexHarnessAdapter,
+    HarnessActivity,
+    HarnessAdapter,
+    HarnessAdapterError,
+    HarnessCapabilities,
+    HarnessErrorKind,
+    HarnessRunRequest,
+    HarnessRunResult,
+    OpenCodeHarnessAdapter,
+    apply_cleanup_outcome,
+    discover_harness_capabilities,
+    normalize_status,
+    register_harness_adapters,
+)
 from obase.hierarchical_context import (
     HierarchicalContextError,
     HierarchicalContextStore,
@@ -104,10 +145,12 @@ from obase.provider_registry import ProviderRegistry
 from obase.provider_routing import (
     ModelSpec,
     Pricing,
+    ProtocolFamily,
     ProviderCallRequest,
     ProviderHealth,
     ProviderSpec,
     UsageRecord,
+    tool_kind_to_protocol_family,
 )
 from obase.rate_limit import RateLimiter, RateLimitRegistry
 from obase.runbook_loader import RunbookParseError, load_runbook_yaml, parse_runbook
@@ -228,10 +271,43 @@ __all__ = [
     "ProviderRegistry",
     "ModelSpec",
     "Pricing",
+    "ProtocolFamily",
     "ProviderCallRequest",
     "ProviderHealth",
     "ProviderSpec",
     "UsageRecord",
+    "tool_kind_to_protocol_family",
+    "AgentRegistry",
+    "RegistryConflictError",
+    "register_agent",
+    "registry",
+    "A2AAdapterError",
+    "A2AAgentAdapter",
+    "A2ACapabilities",
+    "A2AResult",
+    "normalize_a2a_result",
+    "ACPAdapterError",
+    "ACPAgentAdapter",
+    "ACPCapabilities",
+    "ACPSession",
+    "RESULT_STATUSES",
+    "TERMINAL_STATUSES",
+    "ActivityKind",
+    "BaseCLIHarnessAdapter",
+    "ClaudeCodeHarnessAdapter",
+    "CodexHarnessAdapter",
+    "HarnessActivity",
+    "HarnessAdapter",
+    "HarnessAdapterError",
+    "HarnessCapabilities",
+    "HarnessErrorKind",
+    "HarnessRunRequest",
+    "HarnessRunResult",
+    "OpenCodeHarnessAdapter",
+    "apply_cleanup_outcome",
+    "discover_harness_capabilities",
+    "normalize_status",
+    "register_harness_adapters",
     "CausalGraphError",
     "CausalGraphStore",
     "get_runtime_causal_store",

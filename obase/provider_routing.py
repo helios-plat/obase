@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 
@@ -19,6 +20,63 @@ def _as_tuple(value: Any) -> tuple[Any, ...]:
     if isinstance(value, tuple):
         return value
     return tuple(value)
+
+
+class ProtocolFamily(StrEnum):
+    """Canonical runtime protocol family (D1, single authority).
+
+    The only protocol taxonomy that may describe *runtime* protocol in
+    obase. ``str``-serializable (JSON renders the plain value) and
+    backward-compatible with existing plain-string metadata via
+    :meth:`coerce`. Unknown values are fail-closed (``ValueError``).
+
+    This type never performs semantic routing and never decides
+    agent/task intent — it is static transport/protocol metadata only.
+    """
+
+    NATIVE = "native"
+    HARNESS = "harness"
+    ACP = "acp"
+    A2A = "a2a"
+    MCP = "mcp"
+
+    @classmethod
+    def coerce(cls, value: ProtocolFamily | str) -> ProtocolFamily:
+        """Coerce a stored string (or member) to a member, fail-closed."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            try:
+                return cls(value.strip().lower())
+            except ValueError:
+                pass
+        valid = sorted(member.value for member in cls)
+        raise ValueError(f"unknown protocol family {value!r}; expected one of {valid}")
+
+
+#: Lifecycle/support matrix operations (static capability metadata only).
+LIFECYCLE_OPS = ("run", "stream", "status", "cancel", "resume")
+
+
+_TOOL_KIND_TO_FAMILY = {
+    "native": ProtocolFamily.NATIVE,
+    "mcp": ProtocolFamily.MCP,
+}
+
+
+def tool_kind_to_protocol_family(kind: str) -> ProtocolFamily:
+    """Map a legacy ``ToolKind`` value onto the canonical ProtocolFamily.
+
+    ``ToolKind`` itself is retained (tool transport identity is orthogonal
+    metadata), but it must never grow into an independent runtime protocol
+    taxonomy — runtime protocol questions go to :class:`ProtocolFamily`.
+    """
+    if isinstance(kind, str) and kind.strip().lower() in _TOOL_KIND_TO_FAMILY:
+        return _TOOL_KIND_TO_FAMILY[kind.strip().lower()]
+    raise ValueError(
+        f"tool kind {kind!r} is not a runtime protocol; "
+        f"expected one of {sorted(_TOOL_KIND_TO_FAMILY)}"
+    )
 
 
 @dataclass(frozen=True)
@@ -98,7 +156,14 @@ class ProviderHealth:
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """Provider registry metadata consumed by the routing skill."""
+    """Provider registry metadata consumed by the routing skill.
+
+    D1 runtime descriptor: the same value type carries the static
+    runtime/capability metadata (protocol family, version, availability,
+    lifecycle/support matrix). Live mutable session/run state must never
+    be stored here — descriptor = static metadata, run state = project
+    /runtime layer.
+    """
 
     name: str
     models: tuple[ModelSpec, ...] = ()
@@ -108,6 +173,11 @@ class ProviderSpec:
     enabled: bool = True
     credential_ref: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    protocol_family: ProtocolFamily = ProtocolFamily.NATIVE
+    version: str | None = None
+    available: bool = True
+    unavailable_reason: str | None = None
+    lifecycle: Mapping[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         models: list[ModelSpec] = []
@@ -125,6 +195,27 @@ class ProviderSpec:
         object.__setattr__(self, "models", tuple(models))
         object.__setattr__(self, "capabilities", frozenset(self.capabilities))
         object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "protocol_family", ProtocolFamily.coerce(self.protocol_family))
+        version = self.version.strip() if isinstance(self.version, str) else self.version
+        object.__setattr__(self, "version", version or None)
+        object.__setattr__(self, "available", bool(self.available))
+        raw_lifecycle = dict(self.lifecycle or {})
+        unknown = set(raw_lifecycle) - set(LIFECYCLE_OPS)
+        if unknown:
+            raise ValueError(
+                f"unknown lifecycle ops {sorted(unknown)}; expected subset of {list(LIFECYCLE_OPS)}"
+            )
+        object.__setattr__(
+            self,
+            "lifecycle",
+            {op: bool(raw_lifecycle.get(op, False)) for op in LIFECYCLE_OPS},
+        )
+
+    def can(self, op: str) -> bool:
+        """Return the static lifecycle/support flag for one operation."""
+        if op not in LIFECYCLE_OPS:
+            raise ValueError(f"unknown lifecycle op {op!r}; expected one of {LIFECYCLE_OPS}")
+        return bool(self.lifecycle.get(op, False))
 
     def model(self, name: str | None = None) -> ModelSpec | None:
         if name:
@@ -143,6 +234,11 @@ class ProviderSpec:
             # this object or any serialized routing record.
             "credential_ref": self.credential_ref,
             "metadata": dict(self.metadata),
+            "protocol_family": self.protocol_family.value,
+            "version": self.version,
+            "available": self.available,
+            "unavailable_reason": self.unavailable_reason,
+            "lifecycle": dict(self.lifecycle),
         }
 
 
@@ -225,10 +321,13 @@ class UsageRecord:
 
 
 __all__ = [
+    "LIFECYCLE_OPS",
     "ModelSpec",
     "Pricing",
+    "ProtocolFamily",
     "ProviderCallRequest",
     "ProviderHealth",
     "ProviderSpec",
     "UsageRecord",
+    "tool_kind_to_protocol_family",
 ]

@@ -11,7 +11,7 @@ from importlib.metadata import entry_points
 from typing import Any, Protocol, runtime_checkable
 
 from obase.exceptions import ProviderDiscoveryError, ProviderNotFoundError
-from obase.provider_routing import ProviderSpec
+from obase.provider_routing import ProtocolFamily, ProviderSpec
 
 logger = logging.getLogger(__name__)
 
@@ -252,9 +252,36 @@ class ProviderRegistry:
         except KeyError as exc:
             raise ProviderNotFoundError(f"provider spec {name!r} not registered") from exc
 
-    def list_specs(self) -> list[ProviderSpec]:
-        """Return registered provider metadata in registration order."""
-        return list(self._specs.values())
+    def list_specs(
+        self,
+        *,
+        protocol_family: ProtocolFamily | str | None = None,
+        capability: str | None = None,
+        available_only: bool = False,
+    ) -> list[ProviderSpec]:
+        """Return registered provider metadata in registration order.
+
+        Optional D1 filters (all combine with AND):
+
+        - ``protocol_family``: only specs of this canonical family
+          (plain strings are coerced; unknown values fail closed).
+        - ``capability``: only specs whose capability set contains it.
+        - ``available_only``: exclude ``available=False`` specs.
+
+        Availability is always the explicit ``available`` field — it is
+        never inferred from "registered therefore available".
+        """
+        family = ProtocolFamily.coerce(protocol_family) if protocol_family is not None else None
+        results: list[ProviderSpec] = []
+        for spec in self._specs.values():
+            if family is not None and spec.protocol_family is not family:
+                continue
+            if capability is not None and capability not in spec.capabilities:
+                continue
+            if available_only and not spec.available:
+                continue
+            results.append(spec)
+        return results
 
     # ------------------------------------------------------------------
     # Test helpers
