@@ -338,3 +338,17 @@ from obase.tool_governance import (
     ToolSpec,
     redact_payload,
 )
+
+# 3O Paradigm Phase 1 — contract layer + SQLite KV / MemoryBank (declares aiosqlite)
+from obase.contracts import IKV_Store
+from obase.kv_store import SQLiteKVStore
+from obase.memory_bank import MemoryBank, MemoryItem, cosine_similarity
+
+__all__ = [
+    "IKV_Store",
+    "SQLiteKVStore",
+    "MemoryBank",
+    "MemoryItem",
+    "cosine_similarity",
+    *__all__,
+]
