@@ -63,6 +63,7 @@ from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
 
 __all__ = [
+    "__manifest__",
     "__version__",
     "bootstrap",
     "load_env",
@@ -352,3 +353,43 @@ __all__ = [
     "cosine_similarity",
     *__all__,
 ]
+
+
+__manifest__ = {
+    "package": 'obase',
+    "version": __version__,
+    "elements": [
+        {
+            "name": 'ProviderRegistry',
+            "kind": 'provider_registry',
+            "module": 'obase.provider_registry',
+            "signature": 'ProviderRegistry.get() -> ProviderRegistry',
+            "depends_on": [],
+            "pillars": ['cost', 'fingerprint', 'trail', 'report'],
+        },
+        {
+            "name": 'PgPool',
+            "kind": 'persistence',
+            "module": 'obase.persistence',
+            "signature": 'PgPool(dsn) -> PgPool',
+            "depends_on": [],
+            "pillars": ['trail', 'report'],
+        },
+        {
+            "name": 'run_pipeline',
+            "kind": 'orchestration_primitive',
+            "module": 'obase.orchestrator',
+            "signature": '(stages, context) -> RunState',
+            "depends_on": [],
+            "pillars": ['trail', 'report'],
+        },
+        {
+            "name": 'SQLiteKVStore',
+            "kind": 'kv_store',
+            "module": 'obase.kv_store',
+            "signature": 'SQLiteKVStore(path) -> SQLiteKVStore',
+            "depends_on": [],
+            "pillars": ['fingerprint', 'trail'],
+        },
+    ],
+}
