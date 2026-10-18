@@ -338,3 +338,7 @@ from obase.tool_governance import (
     ToolSpec,
     redact_payload,
 )
+
+# repo3o intake elements
+from obase.kokoro_runtime import KokoroRuntime, get_kokoro_runtime, write_audio_file
+from obase.embedding_gemma import EmbeddingGemmaClient, get_embedding_gemma_client
