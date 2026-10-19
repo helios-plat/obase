@@ -17,6 +17,7 @@ dependencies = [
     "mcp>=1.27",
     "rapidfuzz>=3.0",
     "httpx>=0.27",
+    "aiosqlite>=0.20", # 3O Paradigm Phase 1 — SQLiteKVStore
     "asyncpg>=0.29",
     "pgvector>=0.3",
 ]
