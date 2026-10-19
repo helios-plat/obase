@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from obase.wfg_deadlock_detector import WaitForGraph
 from obase.local_sandbox_pool import LocalSandboxPool, SandboxExecutionResult
 from obase.snapshot_store import SnapshotStore
-
+from obase.wfg_deadlock_detector import WaitForGraph
 
 # ============================================================================
 # WaitForGraph

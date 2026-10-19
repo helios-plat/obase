@@ -29,9 +29,10 @@ import json
 import secrets
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 __all__ = [
     "CapabilityToken",
@@ -98,7 +99,7 @@ class CapabilityToken:
         }
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "CapabilityToken":
+    def from_payload(cls, payload: dict[str, Any]) -> CapabilityToken:
         return cls(
             subject=payload["sub"],
             capabilities=frozenset(payload.get("caps", [])),
@@ -164,7 +165,7 @@ def verify_capability_token(
     secret: str,
     token: str,
     *,
-    revoker: "CapabilityRevoker | None" = None,
+    revoker: CapabilityRevoker | None = None,
 ) -> CapabilityToken:
     """验签并解析；签名错误/过期/已撤销均抛错。"""
     if not token:

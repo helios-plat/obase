@@ -29,9 +29,10 @@ import secrets
 import tempfile
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from obase.permission_contract import (
     CapabilityDeniedError,
@@ -43,10 +44,9 @@ from obase.permission_contract import (
 from obase.resource_limits import (
     DEFAULT_ENVELOPE,
     ResourceEnvelope,
-    WallclockDeadline,
     validate_envelope,
 )
-from obase.zero_egress_sandbox import NETWORK_COMMANDS, ZeroEgressSandbox
+from obase.zero_egress_sandbox import ZeroEgressSandbox
 
 log = logging.getLogger(__name__)
 
@@ -310,16 +310,28 @@ class HardenedExecutor:
         if use_breaker and self._breaker_open():
             msg = "circuit OPEN: execution rejected"
             if audit:
-                self._audit(action="execute", token=tok, capability=cap, outcome="blocked", detail={"reason": msg})
-            return ExecutionResult(status="blocked", error=msg, elapsed_ms=int((time.monotonic() - t0) * 1000))
+                self._audit(
+                    action="execute", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": msg},
+                )
+            return ExecutionResult(
+                status="blocked", error=msg,
+                elapsed_ms=int((time.monotonic() - t0) * 1000),
+            )
 
         if use_rate_limit:
             try:
                 self._acquire_rate()
             except Exception as exc:
                 if audit:
-                    self._audit(action="execute", token=tok, capability=cap, outcome="blocked", detail={"reason": f"rate limit: {exc}"})
-                return ExecutionResult(status="blocked", error=f"rate limit: {exc}", elapsed_ms=int((time.monotonic() - t0) * 1000))
+                    self._audit(
+                        action="execute", token=tok, capability=cap,
+                        outcome="blocked", detail={"reason": f"rate limit: {exc}"},
+                    )
+                return ExecutionResult(
+                    status="blocked", error=f"rate limit: {exc}",
+                    elapsed_ms=int((time.monotonic() - t0) * 1000),
+                )
 
         probe = HoneypotProbe(self._honeypot_dir) if use_honeypot else None
         if probe is not None:
@@ -393,8 +405,14 @@ class HardenedExecutor:
         if use_breaker and self._breaker_open():
             msg = "circuit OPEN: execution rejected"
             if audit:
-                self._audit(action="aexecute", token=tok, capability=cap, outcome="blocked", detail={"reason": msg})
-            return ExecutionResult(status="blocked", error=msg, elapsed_ms=int((time.monotonic() - t0) * 1000))
+                self._audit(
+                    action="aexecute", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": msg},
+                )
+            return ExecutionResult(
+                status="blocked", error=msg,
+                elapsed_ms=int((time.monotonic() - t0) * 1000),
+            )
 
         if use_rate_limit and self._rate_limiter is not None:
             acquire = getattr(self._rate_limiter, "acquire", None)
@@ -405,8 +423,14 @@ class HardenedExecutor:
                         await result
                 except Exception as exc:
                     if audit:
-                        self._audit(action="aexecute", token=tok, capability=cap, outcome="blocked", detail={"reason": f"rate limit: {exc}"})
-                    return ExecutionResult(status="blocked", error=f"rate limit: {exc}", elapsed_ms=int((time.monotonic() - t0) * 1000))
+                        self._audit(
+                            action="aexecute", token=tok, capability=cap,
+                            outcome="blocked", detail={"reason": f"rate limit: {exc}"},
+                        )
+                    return ExecutionResult(
+                        status="blocked", error=f"rate limit: {exc}",
+                        elapsed_ms=int((time.monotonic() - t0) * 1000),
+                    )
 
         probe = HoneypotProbe(self._honeypot_dir) if use_honeypot else None
         if probe is not None:
@@ -421,7 +445,7 @@ class HardenedExecutor:
             if timeout is None:
                 timeout = env.wallclock_s
             outcome = await asyncio.wait_for(fn(*args, **(kwargs or {})), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             status = "timeout"
             err = f"wallclock timeout after {timeout}s"
         except Exception as exc:  # noqa: BLE001
@@ -499,21 +523,36 @@ class HardenedExecutor:
         if env_limits.network.mode == "deny_all" and firewall_reason is not None:
             reason = f"network denied by envelope: {firewall_reason}"
             if audit:
-                self._audit(action="subprocess", token=tok, capability=cap, outcome="blocked", detail={"reason": reason})
-            return {"status": "blocked", "reason": reason, "elapsed_ms": int((time.monotonic() - t0) * 1000)}
+                self._audit(
+                    action="subprocess", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": reason},
+                )
+            return {
+                "status": "blocked", "reason": reason,
+                "elapsed_ms": int((time.monotonic() - t0) * 1000),
+            }
         if env_limits.network.mode == "allowlist":
             egress_host = self._resolve_egress(command)
             if egress_host is not None and not env_limits.allows_network(egress_host):
                 reason = f"egress host not allowed by envelope: {egress_host}"
                 if audit:
-                    self._audit(action="subprocess", token=tok, capability=cap, outcome="blocked", detail={"reason": reason})
-                return {"status": "blocked", "reason": reason, "elapsed_ms": int((time.monotonic() - t0) * 1000)}
+                    self._audit(
+                    action="subprocess", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": reason},
+                )
+                return {
+                "status": "blocked", "reason": reason,
+                "elapsed_ms": int((time.monotonic() - t0) * 1000),
+            }
 
         probe = HoneypotProbe(self._honeypot_dir) if use_honeypot else None
         if probe is not None:
             probe.plant()
 
-        clean_env = self._sandbox.sanitized_env() if env_vars is None else self._sanitize_env(env_vars)
+        if env_vars is None:
+            clean_env = self._sandbox.sanitized_env()
+        else:
+            clean_env = self._sanitize_env(env_vars)
         run_result = await self._sandbox.run(
             command, timeout=env_limits.wallclock_s, cwd=cwd, env=clean_env
         )
@@ -534,7 +573,11 @@ class HardenedExecutor:
                 token=tok,
                 capability=cap,
                 outcome=run_result.get("status", "unknown"),
-                detail={"command": command[:200], "elapsed_ms": run_result["elapsed_ms"], "honey_trips": trips},
+                detail={
+                    "command": command[:200],
+                    "elapsed_ms": run_result["elapsed_ms"],
+                    "honey_trips": trips,
+                },
             )
         return run_result
 

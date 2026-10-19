@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, List, Set
 
 
 class WaitForGraph:
@@ -17,8 +16,8 @@ class WaitForGraph:
     """
 
     def __init__(self) -> None:
-        self.graph: Dict[str, Set[str]] = defaultdict(set)
-        self.priorities: Dict[str, int] = {}
+        self.graph: dict[str, set[str]] = defaultdict(set)
+        self.priorities: dict[str, int] = {}
 
     def set_priority(self, agent_id: str, priority: int) -> None:
         """设置 agent 优先级."""
@@ -38,11 +37,11 @@ class WaitForGraph:
                 if not holders:
                     del self.graph[w]
 
-    def detect_cycles(self) -> List[List[str]]:
+    def detect_cycles(self) -> list[list[str]]:
         """DFS 回溯检测所有简单环."""
-        visited: Set[str] = set()
-        path: List[str] = []
-        cycles: List[List[str]] = []
+        visited: set[str] = set()
+        path: list[str] = []
+        cycles: list[list[str]] = []
 
         def dfs(node: str) -> None:
             if node in path:
@@ -61,10 +60,10 @@ class WaitForGraph:
                 dfs(n)
         return cycles
 
-    def resolve_deadlocks(self) -> List[str]:
+    def resolve_deadlocks(self) -> list[str]:
         """检测所有死锁环，按最低优先级斩杀 Victim 拆解."""
         cycles = self.detect_cycles()
-        victims: Set[str] = set()
+        victims: set[str] = set()
 
         for cycle in sorted(cycles, key=len):
             active_nodes = [n for n in cycle if n not in victims]

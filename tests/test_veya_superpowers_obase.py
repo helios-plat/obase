@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
-import pytest
-
-from obase.checkpoint_store import CheckpointStore
 from obase.browser_vision_runner import (
     BrowserVisionRunner,
-    PageElement,
-    PageState,
-    VisionRunnerError,
 )
-from obase.ssrf_safe_network import SSRFSafeNetwork, SSRFSafeNetworkError
-
+from obase.checkpoint_store import CheckpointStore
+from obase.ssrf_safe_network import SSRFSafeNetwork
 
 # ============================================================================
 # CheckpointStore

@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-import tempfile
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # decision_logger — ContextVar 全局决策轨迹
@@ -31,7 +29,7 @@ class TestDecisionLogger:
         assert get_trail() is None
 
     async def test_child_task_shares_same_trail_object(self):
-        from obase import begin_trail, end_trail, record_decision
+        from obase import begin_trail, end_trail
 
         trail = begin_trail(run_id="r2")
         await asyncio.gather(*(_record_in_task() for _ in range(5)))
@@ -89,10 +87,13 @@ class TestPseudoAnonymizer:
 
 class TestPluginLoader:
     def test_load_and_call(self, tmp_path: pathlib.Path):
-        from obase import PluginSandboxError, load_python_plugin
+        from obase import load_python_plugin
 
         p = tmp_path / "greet.py"
-        p.write_text("# @name: greet\n# @version: 1.2.0\n\ndef main(name):\n    return f'hi {name}'\n")
+        p.write_text(
+            "# @name: greet\n# @version: 1.2.0\n\n"
+            "def main(name):\n    return f'hi {name}'\n"
+        )
         spec = load_python_plugin(p)
         assert spec.entry_points["main"]("x") == "hi x"
         assert spec.version == "1.2.0"

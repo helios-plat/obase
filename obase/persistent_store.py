@@ -16,7 +16,10 @@
 
 例:
     >>> store = PersistentStore("/tmp/ps_demo")
-    >>> rev = store.save("causal_graph", "core", CausalGraphDoc(nodes=["a","b"], edges=[("a","b")]).to_dict(),
+    >>> rev = store.save(
+    ...     "causal_graph", "core",
+    ...     CausalGraphDoc(nodes=["a", "b"], edges=[("a", "b")]).to_dict(),
+    ... )
     ...                   author="system", reason="init")
     >>> store.load_latest("causal_graph", "core")["nodes"]
     ['a', 'b']
@@ -25,7 +28,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 import threading
 import time
@@ -33,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from obase.versionstore import VersionStore, VersionStoreError
+from obase.versionstore import VersionStore
 
 __all__ = [
     "CausalGraphDoc",
@@ -77,7 +79,7 @@ class CausalGraphDoc:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CausalGraphDoc":
+    def from_dict(cls, data: dict[str, Any]) -> CausalGraphDoc:
         return cls(
             name=data["name"],
             nodes=list(data.get("nodes", [])),
@@ -109,7 +111,7 @@ class ThreatProfile:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ThreatProfile":
+    def from_dict(cls, data: dict[str, Any]) -> ThreatProfile:
         return cls(
             profile_id=data["profile_id"],
             signature=list(data.get("signature", [])),
@@ -142,7 +144,7 @@ class StrategyState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StrategyState":
+    def from_dict(cls, data: dict[str, Any]) -> StrategyState:
         return cls(
             strategy_id=data["strategy_id"],
             name=data.get("name", ""),
@@ -171,7 +173,7 @@ class CPD:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CPD":
+    def from_dict(cls, data: dict[str, Any]) -> CPD:
         return cls(
             node=data["node"],
             parents=list(data.get("parents", [])),

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from obase.skills_registry import SkillsRegistry, SkillsRegistryError
 from obase.adaptive_scraper import adaptive_scraper
-from obase.dlt_pipeline_store import DltPipelineStore, DltPipelineStoreError
-
+from obase.dlt_pipeline_store import DltPipelineStore
+from obase.skills_registry import SkillsRegistry, SkillsRegistryError
 
 # ============================================================================
 # SkillsRegistry
@@ -89,7 +88,7 @@ class TestAdaptiveScraper:
     def test_element_is_callable_entrypoint(self):
         import obase
 
-        assert callable(getattr(obase, "adaptive_scraper"))
+        assert callable(obase.adaptive_scraper)
 
     def test_signature_contract(self):
         import inspect

@@ -12,7 +12,10 @@
 纯 stdlib。
 
 例:
-    >>> env = ResourceEnvelope(wallclock_s=5.0, network=NetworkPolicy("allowlist", ("api.example.com:443",)))
+    >>> env = ResourceEnvelope(
+    ...     wallclock_s=5.0,
+    ...     network=NetworkPolicy("allowlist", ("api.example.com:443",)),
+    ... )
     >>> env.allows_network("api.example.com", 443)
     True
     >>> env.allows_network("evil.example.com", 443)

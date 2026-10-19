@@ -124,9 +124,12 @@ class LiveKitWebRTC:
         self._rooms[room_id].connected = True
         return {"room_id": room_id, "participant": participant, "connected": True}
 
-    async def publish_audio(self, room_id: str, *, participant: str, data: bytes) -> dict[str, Any]:
+    async def publish_audio(
+        self, room_id: str, *, participant: str, data: bytes
+    ) -> dict[str, Any]:
         """发布音频帧（簿记 + SDK 扩展点）。"""
-        room = self._room(room_id)
+        if not self._room(room_id):
+            raise LiveKitError(f"unknown room {room_id!r}")
         track_id = f"track-{uuid.uuid4().hex[:8]}"
         self.register_track(room_id, track_id=track_id)
         return {
