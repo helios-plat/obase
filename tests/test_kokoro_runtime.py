@@ -1,5 +1,5 @@
-from pathlib import Path
 from unittest.mock import patch
+
 import pytest
 
 from obase.kokoro_runtime import KokoroRuntime, KokoroRuntimeError, write_audio_file

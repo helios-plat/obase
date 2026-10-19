@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 class KokoroRuntimeError(RuntimeError):

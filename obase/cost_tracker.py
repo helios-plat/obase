@@ -290,3 +290,91 @@ def convert_currency(
     if rate <= 0:
         raise ValueError(f"rate must be positive, got {rate}")
     return (amount * Decimal(str(rate))).quantize(Decimal("0.000001"))
+
+
+# ---------------------------------------------------------------------------
+# ContextVar 全局并发安全成本计数器 (SPEC §5.6 C1)
+# ---------------------------------------------------------------------------
+# 全局 ContextVar 持有共享 CostTracker 引用：子 Task 继承父 Context，
+# 各 Task 只 .get() + 对象内累加，无锁竞争、无跨 Task 泄漏。
+# ---------------------------------------------------------------------------
+
+from contextvars import ContextVar  # noqa: E402
+
+_current_tracker: ContextVar[CostTracker | None] = ContextVar(
+    "cost_tracker", default=None
+)
+
+# 3O 范式 Phase 4 兼容别名: omodul 规范 §5.6 C1 直接引用 current_cost.set/.get/.reset。
+current_cost = _current_tracker
+
+
+def get_cost_tracker() -> CostTracker | None:
+    """取当前 Context 绑定的全局成本计数器；无则 None。"""
+    return _current_tracker.get()
+
+
+def bind_cost_tracker(tracker: CostTracker | None) -> None:
+    """把 CostTracker 绑定到当前 Context（子 Task 自动继承同一引用）。"""
+    _current_tracker.set(tracker)
+
+
+def record_cost(
+    category: str,
+    provider: str,
+    model_or_tier: str,
+    unit: str,
+    quantity: float,
+) -> float:
+    """向当前 Context 的全局计数器记录一笔成本；未绑定时静默返回 0.0。"""
+    tracker = _current_tracker.get()
+    if tracker is None:
+        return 0.0
+    return tracker.record(category, provider, model_or_tier, unit, quantity)
+
+
+def record_tokens(
+    provider: str,
+    model_or_tier: str,
+    *,
+    in_tokens: int,
+    out_tokens: int,
+) -> float:
+    """Token 记账便捷入口（USD 单价经 PricingTable 按 unit in/out 查询）。
+
+    未配置单价时回退默认费率（$3/M in + $15/M out），保证开箱即用。
+    未绑定全局计数器时返回 0.0。
+    """
+    tracker = _current_tracker.get()
+    if tracker is None:
+        return 0.0
+    total = 0.0
+    for unit, qty, fallback_rate in (
+        ("in", in_tokens, 3e-6),
+        ("out", out_tokens, 15e-6),
+    ):
+        if qty <= 0:
+            continue
+        try:
+            total += tracker.record(
+                category="llm",
+                provider=provider,
+                model_or_tier=model_or_tier,
+                unit=unit,
+                quantity=qty,
+            )
+        except PricingNotConfiguredError:
+            # 回退默认费率，保持 Token 计数器开箱即用（直接记入 tracker 内部累计）
+            tracker._entries.append(
+                {
+                    "category": "llm",
+                    "provider": provider,
+                    "model_or_tier": model_or_tier,
+                    "unit": unit,
+                    "quantity": qty,
+                    "cost_usd": qty * fallback_rate,
+                }
+            )
+            tracker._total_usd += qty * fallback_rate
+            total += qty * fallback_rate
+    return total

@@ -9,6 +9,9 @@ failure/timeout/unavailable paths use deterministic local doubles.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+
 import pytest
 
 from obase.harness_adapter import (
@@ -68,6 +71,21 @@ def _canned_completed() -> HarnessRunResult:
         usage={"tokens": 3},
         terminal_observed=True,
     )
+
+
+def _opencode_run_available() -> bool:
+    binary = shutil.which("opencode")
+    if binary is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [binary, "run", "reply with exactly: D2_PROBE"],
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
 
 
 # -- identity ---------------------------------------------------------------
@@ -359,6 +377,10 @@ async def test_all_adapters_share_one_result_abi():
 
 @pytest.mark.asyncio()
 async def test_live_terminal_observation_end_to_end():
+    if shutil.which("opencode") is None:
+        pytest.skip("opencode binary is not installed")
+    if not _opencode_run_available():
+        pytest.skip("opencode run is unavailable in this environment")
     adapter = OpenCodeHarnessAdapter(timeout_s=90)
     run = await adapter.run("reply with exactly: D2_TERMINAL_OK")
     assert run.status == "completed"

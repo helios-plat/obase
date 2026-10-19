@@ -10,11 +10,22 @@ class EmbeddingGemmaError(RuntimeError):
 
 
 class EmbeddingGemmaClient:
-    def __init__(self, *, base_url: str = "http://localhost:11434", model: str = "embeddinggemma") -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://localhost:11434",
+        model: str = "embeddinggemma",
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
 
-    async def embed(self, *, text: str | None = None, image_path: str | None = None, code: str | None = None) -> list[float]:
+    async def embed(
+        self,
+        *,
+        text: str | None = None,
+        image_path: str | None = None,
+        code: str | None = None,
+    ) -> list[float]:
         import httpx
         payload: dict[str, Any] = {"model": self.model}
         if text is not None:
