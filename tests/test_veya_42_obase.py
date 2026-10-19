@@ -302,6 +302,10 @@ class TestGitWorktree:
         repo.mkdir()
         result = await run_git(["init", "-b", "main"], cwd=repo)
         assert result.ok, result.stderr
+        result = await run_git(["config", "user.name", "obase-test"], cwd=repo)
+        assert result.ok, result.stderr
+        result = await run_git(["config", "user.email", "obase-test@example.invalid"], cwd=repo)
+        assert result.ok, result.stderr
         (repo / "f.txt").write_text("x")
         result = await run_git(["add", "."], cwd=repo)
         assert result.ok
