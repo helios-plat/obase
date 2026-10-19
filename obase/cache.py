@@ -4,18 +4,28 @@ import asyncio
 import hashlib
 import inspect
 import pickle
+import secrets
 import time
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 import structlog
 
-from obase.exceptions import CacheError, OBaseError
+from obase.exceptions import CacheError, LockAcquisitionError, OBaseError
 from obase.fs import FS
 
 log = structlog.get_logger()
+
+_RELEASE_IF_OWNER_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
 
 
 class Cache:
@@ -78,6 +88,71 @@ class Cache:
                 p.unlink(missing_ok=True)
                 removed += 1
         return removed
+
+
+class DistributedLock:
+    """Redis SETNX 分布式锁 — 用于 cart_id、inventory 等临界区防超卖。
+
+    Token 化释放：只有持锁方自己的 token 匹配时才 DEL，避免 TTL 过期后
+    误删别的持有者刚抢到的锁（用 Lua 脚本保证 compare-and-del 原子性）。
+
+    Usage:
+        async with DistributedLock(key=f"cart:{cart_id}"):
+            ...  # 临界区
+    """
+
+    def __init__(
+        self,
+        *,
+        key: str,
+        redis_url: str = "redis://localhost:6379/0",
+        ttl_seconds: float = 10.0,
+        timeout_seconds: float = 5.0,
+        retry_interval: float = 0.05,
+    ) -> None:
+        self._key = f"lock:{key}"
+        self._redis_url = redis_url
+        self._ttl_ms = int(ttl_seconds * 1000)
+        self._timeout_seconds = timeout_seconds
+        self._retry_interval = retry_interval
+        self._token = secrets.token_hex(16)
+        self._client: Any = None
+
+    async def __aenter__(self) -> DistributedLock:
+        try:
+            import redis.asyncio as redis_lib
+        except ImportError as exc:
+            raise OBaseError(
+                "redis package not installed; install obase[cache] to use DistributedLock"
+            ) from exc
+
+        self._client = redis_lib.Redis.from_url(self._redis_url)
+        deadline = time.monotonic() + self._timeout_seconds
+        while True:
+            acquired = await self._client.set(self._key, self._token, nx=True, px=self._ttl_ms)
+            if acquired:
+                return self
+            if time.monotonic() >= deadline:
+                await self._client.aclose()
+                self._client = None
+                raise LockAcquisitionError(
+                    f"Could not acquire lock {self._key!r} within {self._timeout_seconds}s"
+                )
+            await asyncio.sleep(self._retry_interval)
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self._client is None:
+            return
+        try:
+            await self._client.eval(_RELEASE_IF_OWNER_SCRIPT, 1, self._key, self._token)
+        finally:
+            await self._client.aclose()
+            self._client = None
 
 
 def cache_invalidate(

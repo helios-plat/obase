@@ -1,0 +1,8 @@
+{
+  "source_sha": "7c8ca2742fcae32c8f6da83363becfb1de6d06cd",
+  "generated_from": "detached exact-HEAD clean worktree",
+  "collection": {"error_count": null, "status": "FAIL"},
+  "ruff": {"count": 13, "fingerprints": [], "fingerprint_policy": "rule + normalized path + message signature"},
+  "mypy": {"count": 1188, "fingerprints": [], "fingerprint_policy": "normalized path + error code + message signature"},
+  "new_errors": {"ruff": 0, "mypy": 0}
+}

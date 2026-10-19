@@ -51,6 +51,10 @@ class CacheError(OBaseError):
     retryable = True
 
 
+class LockAcquisitionError(OBaseError):
+    retryable = True
+
+
 class RateLimitExceeded(OBaseError):
     retryable = True
 

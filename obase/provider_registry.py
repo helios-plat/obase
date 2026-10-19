@@ -11,6 +11,7 @@ from importlib.metadata import entry_points
 from typing import Any, Protocol, runtime_checkable
 
 from obase.exceptions import ProviderDiscoveryError, ProviderNotFoundError
+from obase.provider_routing import ProtocolFamily, ProviderSpec
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ProviderRegistry:
     _images: dict[str, ImageGenCaller] = {}
     _generic: dict[str, dict[str, Any]] = {}
     _capabilities: dict[str, dict[str, Any]] = {}
+    _specs: dict[str, ProviderSpec] = {}
 
     @classmethod
     def get(cls) -> ProviderRegistry:
@@ -235,6 +237,52 @@ class ProviderRegistry:
             return dict(self._capabilities)
         return self._capabilities.get(name, {})
 
+    def register_spec(self, spec: ProviderSpec, replace: bool = False) -> None:
+        """Register execution metadata alongside the existing callable registry."""
+        if not replace and spec.name in self._specs:
+            raise OBaseRegistryConflict(
+                f"provider spec {spec.name!r} already registered. Use replace=True to override."
+            )
+        self._specs[spec.name] = spec
+
+    def spec(self, name: str) -> ProviderSpec:
+        """Return one typed provider spec."""
+        try:
+            return self._specs[name]
+        except KeyError as exc:
+            raise ProviderNotFoundError(f"provider spec {name!r} not registered") from exc
+
+    def list_specs(
+        self,
+        *,
+        protocol_family: ProtocolFamily | str | None = None,
+        capability: str | None = None,
+        available_only: bool = False,
+    ) -> list[ProviderSpec]:
+        """Return registered provider metadata in registration order.
+
+        Optional D1 filters (all combine with AND):
+
+        - ``protocol_family``: only specs of this canonical family
+          (plain strings are coerced; unknown values fail closed).
+        - ``capability``: only specs whose capability set contains it.
+        - ``available_only``: exclude ``available=False`` specs.
+
+        Availability is always the explicit ``available`` field — it is
+        never inferred from "registered therefore available".
+        """
+        family = ProtocolFamily.coerce(protocol_family) if protocol_family is not None else None
+        results: list[ProviderSpec] = []
+        for spec in self._specs.values():
+            if family is not None and spec.protocol_family is not family:
+                continue
+            if capability is not None and capability not in spec.capabilities:
+                continue
+            if available_only and not spec.available:
+                continue
+            results.append(spec)
+        return results
+
     # ------------------------------------------------------------------
     # Test helpers
     # ------------------------------------------------------------------
@@ -248,6 +296,7 @@ class ProviderRegistry:
         cls._images.clear()
         cls._generic.clear()
         cls._capabilities.clear()
+        cls._specs.clear()
 
     @classmethod
     def reset(cls) -> None:
@@ -264,6 +313,12 @@ __manifest__ = {
         {"name": "LLMCaller", "layer": "obase", "summary": "LLM 调用协议"},
         {"name": "VLMCaller", "layer": "obase", "summary": "VLM 调用协议"},
         {"name": "ImageGenCaller", "layer": "obase", "summary": "图像生成调用协议"},
+        {"name": "ProviderSpec", "layer": "obase", "summary": "Provider execution metadata"},
+        {"name": "ModelSpec", "layer": "obase", "summary": "Model capability and pricing metadata"},
+        {"name": "Pricing", "layer": "obase", "summary": "Provider/model pricing metadata"},
+        {"name": "ProviderHealth", "layer": "obase", "summary": "Provider health observation"},
+        {"name": "ProviderCallRequest", "layer": "obase", "summary": "Safe provider call request"},
+        {"name": "UsageRecord", "layer": "obase", "summary": "Normalized provider usage"},
         {"name": "OBaseRegistryConflict", "layer": "obase", "summary": "重复注册异常"},
     ],
 }
@@ -282,3 +337,76 @@ class ImageGenCaller(Protocol):
         height: int = 1024,
         **kwargs: Any,
     ) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class PaymentProvider(Protocol):
+    """支付 provider 协议（Stripe/PayPal/Manual 等实现)。
+
+    走 ProviderRegistry 的 generic category("payment")注册/取用，不是独立的
+    PaymentProviderRegistry 类——跟 llm/vlm/image_gen 之外的任意新 category
+    是同一套机制（见 ProviderRegistry.register_generic/generic）。
+    """
+
+    async def authorize(
+        self, *, amount: int, currency: str, meta: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
+    async def capture(self, *, intent_id: str) -> dict[str, Any]: ...
+
+    async def refund(self, *, intent_id: str, amount: int) -> dict[str, Any]: ...
+
+    async def cancel(self, *, intent_id: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class NotificationProvider(Protocol):
+    """通知 provider 协议（SendGrid/Twilio/Manual 等实现)。
+
+    同 PaymentProvider：走 generic category("notification")注册/取用，不是
+    独立的 NotificationProviderRegistry 类。
+    """
+
+    async def send_email(self, *, to: str, subject: str, body: str) -> dict[str, Any]: ...
+
+    async def send_sms(self, *, to: str, message: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class SearchProvider(Protocol):
+    """搜索索引 provider 协议（MeiliSearch/Algolia/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider：走 generic
+    category("search")注册/取用，不是独立的 SearchProviderRegistry 类。
+    """
+
+    async def upsert_doc(self, *, index: str, document: dict[str, Any]) -> bool: ...
+
+    async def delete_doc(self, *, index: str, doc_id: str) -> bool: ...
+
+
+@runtime_checkable
+class FulfillmentProvider(Protocol):
+    """物流履约 provider 协议（顺丰/UPS/Manual 等实现)。
+
+    同 PaymentProvider/NotificationProvider/SearchProvider：走 generic
+    category("fulfillment")注册/取用，不是独立的 FulfillmentProviderRegistry 类。
+    """
+
+    async def get_rates(
+        self, *, package: dict[str, Any], address: dict[str, Any]
+    ) -> list[dict[str, Any]]: ...
+
+    async def create_label(self, *, shipment_info: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def cancel_label(self, *, tracking_number: str) -> bool: ...
+
+
+@runtime_checkable
+class TaxProvider(Protocol):
+    """税费计算 provider 协议（Avalara/TaxJar/Manual 等实现)。
+
+    同上：走 generic category("tax")注册/取用，不是独立的 TaxProviderRegistry 类。
+    """
+
+    async def calculate(self, *, address: dict[str, Any], items: list[Any]) -> dict[str, Any]: ...
