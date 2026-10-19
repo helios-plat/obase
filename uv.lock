@@ -1408,7 +1408,7 @@ requires-dist = [
     { name = "docker", marker = "extra == 'docker'", specifier = ">=7.0" },
     { name = "edge-tts", marker = "extra == 'tts'", specifier = ">=6.1" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", specifier = ">=1.27" },
+    { name = "mcp", specifier = ">=1.27,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pgvector", specifier = ">=0.3" },
     { name = "pillow", specifier = ">=10.0" },
