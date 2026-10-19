@@ -1,197 +1,340 @@
-"""
-认知状态存储基础设施
-====================
-obase/cognitive_store.py
+"""obase.cognitive_store — 向量与文本混合存储适配器 (MemoryChunk; PgVector / SQLite).
+
+定义 MemoryChunk 结构，提供两种后端接口：
+- PgVectorMemoryStore : pgvector HNSW 近邻检索（经 obase.persistence.vector.vector_search）
+- SqliteMemoryStore   : 零依赖 SQLite 落盘（JSON 序列化 embedding，余弦手工计算），
+                        用于无 Postgres 的轻量/测试环境
+
+Example:
+    >>> store = SqliteMemoryStore("/tmp/mem.db", dim=4)
+    >>> await store.upsert(MemoryChunk(chunk_id="c1", content="hello", embedding=[1.0, 0, 0, 0]))
+    >>> hits = await store.search([1.0, 0, 0, 0], top_k=5)
+    >>> hits[0][0].chunk_id
+    'c1'
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
-from uuid import UUID
+import asyncio
+import json
+import math
+import sqlite3
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
 
-from services.models import InteractionEvent, KCMastery
-from sqlalchemy import insert, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+__all__ = [
+    "MemoryChunk",
+    "MemoryStore",
+    "PgVectorMemoryStore",
+    "SqliteMemoryStore",
+    "make_memory_store",
+]
 
-from obase.cognitive_types import KCState, fsrs_new_card, new_state_from_prior
-from obase.prior_provider import PriorProvider
+
+@dataclass
+class MemoryChunk:
+    """统一记忆块结构：文本 + 可选向量 + 元数据。"""
+
+    chunk_id: str
+    content: str
+    embedding: list[float] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    path: str | None = None
+    created_at: float = field(default_factory=time.time)
 
 
 @runtime_checkable
-class BaseCognitiveStore(Protocol):
-    """认知状态存储协议。"""
+class MemoryStore(Protocol):
+    """混合存储协议：upsert / search / delete / get / count。"""
 
-    async def get_or_create(
-        self, student_id: UUID, kc_id: str, question_type: str = "solve"
-    ) -> tuple[KCState, dict]:
-        """获取或创建认知状态和 FSRS 卡片。"""
-        ...
-
-    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
-        """获取学生所有知识点的认知状态。"""
-        ...
-
-    async def save(self, student_id: UUID, kc_id: str, state: KCState, card_dict: dict) -> None:
-        """保存更新后的状态。"""
-        ...
-
-    async def append_event(self, student_id: UUID, kc_id: str, event_data: dict) -> None:
-        """追加交互事件（只增不改）。"""
-        ...
+    async def upsert(self, chunk: MemoryChunk) -> None: ...
+    async def search(
+        self, vector: list[float], *, top_k: int = 10
+    ) -> list[tuple[MemoryChunk, float]]: ...
+    async def delete(self, chunk_id: str) -> bool: ...
+    async def get(self, chunk_id: str) -> MemoryChunk | None: ...
+    async def count(self) -> int: ...
 
 
-class InMemoryStore:
-    """内存版状态存储（用于测试）。"""
-
-    def __init__(self):
-        self._states: dict[str, KCState] = {}
-        self._cards: dict[str, dict] = {}
-        self._events: list[dict] = []
-
-    def _key(self, student_id: UUID, kc_id: str) -> str:
-        return f"{student_id}::{kc_id}"
-
-    async def get_or_create(
-        self, student_id: UUID, kc_id: str, question_type: str = "solve"
-    ) -> tuple[KCState, dict]:
-        k = self._key(student_id, kc_id)
-        if k not in self._states:
-            # 优先使用 PriorProvider，如果它已经预热 (例如在测试中或应用启动时)
-            if PriorProvider._is_warmed:
-                prior = await PriorProvider.get_prior(None, kc_id, question_type)
-            else:
-                # 兼容性 Fallback
-                from data.guangdong_math_kc import get_bkt_prior
-
-                prior = get_bkt_prior(kc_id)
-
-            self._states[k] = new_state_from_prior(kc_id=kc_id, prior=prior)
-            self._cards[k] = fsrs_new_card()
-        return self._states[k], self._cards[k]
-
-    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
-        prefix = f"{student_id}::"
-        return {
-            k[len(prefix) :]: (self._states[k], self._cards[k])
-            for k in self._states
-            if k.startswith(prefix)
-        }
-
-    async def save(self, student_id: UUID, kc_id: str, state: KCState, card_dict: dict) -> None:
-        k = self._key(student_id, kc_id)
-        self._states[k] = state
-        self._cards[k] = card_dict
-
-    async def append_event(self, student_id: UUID, kc_id: str, event_data: dict) -> None:
-        event = event_data.copy()
-        event["student_id"] = student_id
-        event["knowledge_point"] = kc_id
-        if "occurred_at" not in event:
-            event["occurred_at"] = datetime.now(UTC)
-        self._events.append(event)
+def _embedding_json(chunk: MemoryChunk) -> str | None:
+    return json.dumps(chunk.embedding) if chunk.embedding is not None else None
 
 
-class PgStore:
-    """PostgreSQL 状态存储。"""
+def _metadata_json(chunk: MemoryChunk) -> str:
+    return json.dumps(chunk.metadata, ensure_ascii=False, default=str)
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
 
-    async def get_or_create(
-        self, student_id: UUID, kc_id: str, question_type: str = "solve"
-    ) -> tuple[KCState, dict]:
-        stmt = select(KCMastery).where(
-            KCMastery.student_id == student_id, KCMastery.knowledge_point == kc_id
-        )
-        result = await self.session.execute(stmt)
-        row = result.scalar_one_or_none()
+# ---------------------------------------------------------------------------
+# PgVector 后端
+# ---------------------------------------------------------------------------
 
-        if row:
-            return self._row_to_entry(row)
-        else:
-            prior = await PriorProvider.get_prior(self.session, kc_id, question_type)
-            state = new_state_from_prior(kc_id=kc_id, prior=prior)
-            card = fsrs_new_card()
-            return state, card
 
-    async def get_all_states(self, student_id: UUID) -> dict[str, tuple[KCState, dict]]:
-        stmt = select(KCMastery).where(KCMastery.student_id == student_id)
-        result = await self.session.execute(stmt)
-        rows = result.scalars().all()
-        return {row.knowledge_point: self._row_to_entry(row) for row in rows}
+class PgVectorMemoryStore:
+    """pgvector 后端：表结构由调用方保证（或经 ensure_table 建出）。
 
-    def _row_to_entry(self, row: KCMastery) -> tuple[KCState, dict]:
-        state = KCState(
-            kc_id=row.knowledge_point,
-            p_init=row.p_init,
-            p_transit=row.p_transit,
-            p_guess=row.p_guess,
-            p_slip=row.p_slip,
-            p_mastery=row.p_mastery,
-            long_term_mastery=row.long_term_mastery,
-            last_interaction_ts=row.last_interaction_at.timestamp()
-            if row.last_interaction_at
-            else None,
-            n_attempts=row.n_attempts or 0,
-            p_recognition=row.p_recognition,
-            p_recognition_init=row.p_recognition_init or 0.20,
-        )
-        card = row.fsrs_card_json or fsrs_new_card()
-        return state, card
+    Table schema 约定:
+        chunk_id text primary key, content text, embedding vector(dim),
+        metadata jsonb, path text, created_at timestamptz default now()
+    """
 
-    async def save(self, student_id: UUID, kc_id: str, state: KCState, card_dict: dict) -> None:
-        last_interaction_at = (
-            datetime.fromtimestamp(state.last_interaction_ts, UTC)
-            if state.last_interaction_ts
-            else datetime.now(UTC)
-        )
-        stmt = (
-            update(KCMastery)
-            .where(KCMastery.student_id == student_id, KCMastery.knowledge_point == kc_id)
-            .values(
-                p_mastery=state.p_mastery,
-                long_term_mastery=state.long_term_mastery,
-                p_recognition=state.p_recognition,
-                fsrs_card_json=card_dict,
-                last_interaction_at=last_interaction_at,
-                n_attempts=state.n_attempts,
-                updated_at=datetime.now(UTC),
+    def __init__(
+        self,
+        pool: Any,
+        *,
+        table: str = "memory_chunk",
+        vector_column: str = "embedding",
+        dim: int = 1536,
+    ) -> None:
+        self.pool = pool
+        self.table = table
+        self.vector_column = vector_column
+        self.dim = dim
+
+    async def upsert(self, chunk: MemoryChunk) -> None:
+        from obase.persistence import transaction
+
+        vec = chunk.embedding
+        if vec is not None and len(vec) != self.dim:
+            raise ValueError(f"embedding dim {len(vec)} != configured {self.dim}")
+        vec_sql = _fmt_vec(vec) if vec else "NULL"
+        async with transaction(self.pool) as tx:
+            await tx.execute(
+                f"""
+                INSERT INTO "{self.table}"
+                (chunk_id, content, {self.vector_column}, metadata, path, created_at)
+                VALUES ($1, $2, {vec_sql}, $3::jsonb, $4, NOW())
+                ON CONFLICT (chunk_id) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    {self.vector_column} = EXCLUDED.{self.vector_column},
+                    metadata = EXCLUDED.metadata,
+                    path = EXCLUDED.path
+                """,
+                chunk.chunk_id,
+                chunk.content,
+                _metadata_json(chunk),
+                chunk.path,
             )
-        )
-        result = await self.session.execute(stmt)
 
-        if result.rowcount == 0:
-            ins_stmt = insert(KCMastery).values(
-                student_id=student_id,
-                knowledge_point=kc_id,
-                p_init=state.p_init,
-                p_transit=state.p_transit,
-                p_guess=state.p_guess,
-                p_slip=state.p_slip,
-                p_mastery=state.p_mastery,
-                long_term_mastery=state.long_term_mastery,
-                p_recognition=state.p_recognition,
-                p_recognition_init=state.p_recognition_init,
-                fsrs_card_json=card_dict,
-                last_interaction_at=last_interaction_at,
-                n_attempts=state.n_attempts,
+    async def search(
+        self, vector: list[float], *, top_k: int = 10
+    ) -> list[tuple[MemoryChunk, float]]:
+        from obase.persistence import vector_search
+
+        if len(vector) != self.dim:
+            raise ValueError(f"query dim {len(vector)} != configured {self.dim}")
+        rows = await vector_search(
+            pool=self.pool,
+            table=self.table,
+            vector_column=self.vector_column,
+            query_vector=vector,
+            metric="cosine",
+            top_k=top_k,
+        )
+        out: list[tuple[MemoryChunk, float]] = []
+        for r in rows:
+            meta = r.get("metadata")
+            out.append(
+                (
+                    MemoryChunk(
+                        chunk_id=r["chunk_id"],
+                        content=r.get("content", ""),
+                        metadata=meta if isinstance(meta, dict) else {},
+                        path=r.get("path"),
+                    ),
+                    float(r.get("distance", 0.0)),
+                )
             )
-            await self.session.execute(ins_stmt)
+        return out
 
-    async def append_event(self, student_id: UUID, kc_id: str, event_data: dict) -> None:
-        ins_stmt = insert(InteractionEvent).values(
-            student_id=student_id,
-            knowledge_point=kc_id,
-            question_id=event_data.get("question_id"),
-            source=event_data.get("source"),
-            is_correct=event_data.get("is_correct"),
-            fsrs_rating=event_data.get("fsrs_rating"),
-            time_spent_seconds=event_data.get("time_spent_seconds"),
-            days_since_last=event_data.get("days_since_last"),
-            is_interleaved=event_data.get("is_interleaved", False),
-            item_difficulty=event_data.get("item_difficulty"),
-            predicted_confidence=event_data.get("predicted_confidence"),
-            occurred_at=event_data.get("occurred_at", datetime.now(UTC)),
+    async def delete(self, chunk_id: str) -> bool:
+        from obase.persistence import transaction
+
+        async with transaction(self.pool) as tx:
+            res = await tx.execute(
+                f'DELETE FROM "{self.table}" WHERE chunk_id = $1', chunk_id
+            )
+        return bool(res)
+
+    async def get(self, chunk_id: str) -> MemoryChunk | None:
+        from obase.persistence import transaction
+
+        async with transaction(self.pool) as tx:
+            row = await tx.fetchrow(
+                f'SELECT * FROM "{self.table}" WHERE chunk_id = $1', chunk_id
+            )
+        if row is None:
+            return None
+        return MemoryChunk(
+            chunk_id=row["chunk_id"],
+            content=row.get("content", ""),
+            metadata=row.get("metadata") or {},
+            path=row.get("path"),
         )
-        await self.session.execute(ins_stmt)
+
+    async def count(self) -> int:
+        from obase.persistence import transaction
+
+        async with transaction(self.pool) as tx:
+            row = await tx.fetchrow(f'SELECT COUNT(*) AS n FROM "{self.table}"')
+        return int(row["n"]) if row else 0
+
+
+def _fmt_vec(v: list[float]) -> str:
+    return "[" + ",".join(str(x) for x in v) + "]::vector"
+
+
+# ---------------------------------------------------------------------------
+# SQLite 后端（零依赖 fallback）
+# ---------------------------------------------------------------------------
+
+
+class SqliteMemoryStore:
+    """SQLite 后端：embedding 以 JSON 文本存储，余弦距离手工计算。
+
+    用于轻量部署 / 测试 / 无 Postgres 环境。线程安全：每操作独立连接。
+    """
+
+    def __init__(self, db_path: str | Path, *, dim: int = 1536) -> None:
+        self.db_path = Path(db_path)
+        self.dim = dim
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self) -> None:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_chunk (
+                    chunk_id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    embedding TEXT,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    path TEXT,
+                    created_at REAL NOT NULL
+                )
+                """
+            )
+
+    async def upsert(self, chunk: MemoryChunk) -> None:
+        if chunk.embedding is not None and len(chunk.embedding) != self.dim:
+            raise ValueError(f"embedding dim {len(chunk.embedding)} != configured {self.dim}")
+        await asyncio.to_thread(self._upsert_sync, chunk)
+
+    def _upsert_sync(self, chunk: MemoryChunk) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO memory_chunk (chunk_id, content, embedding, metadata, path, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (chunk_id) DO UPDATE SET
+                    content = excluded.content,
+                    embedding = excluded.embedding,
+                    metadata = excluded.metadata,
+                    path = excluded.path
+                """,
+                (
+                    chunk.chunk_id,
+                    chunk.content,
+                    _embedding_json(chunk),
+                    _metadata_json(chunk),
+                    chunk.path,
+                    chunk.created_at,
+                ),
+            )
+
+    async def search(
+        self, vector: list[float], *, top_k: int = 10
+    ) -> list[tuple[MemoryChunk, float]]:
+        if len(vector) != self.dim:
+            raise ValueError(f"query dim {len(vector)} != configured {self.dim}")
+        return await asyncio.to_thread(self._search_sync, vector, top_k)
+
+    def _search_sync(
+        self, vector: list[float], top_k: int
+    ) -> list[tuple[MemoryChunk, float]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memory_chunk WHERE embedding IS NOT NULL"
+            ).fetchall()
+        scored: list[tuple[MemoryChunk, float]] = []
+        for row in rows:
+            emb = json.loads(row["embedding"])
+            dist = _cosine_distance(vector, emb)
+            scored.append(
+                (
+                    MemoryChunk(
+                        chunk_id=row["chunk_id"],
+                        content=row["content"],
+                        embedding=emb,
+                        metadata=json.loads(row["metadata"]),
+                        path=row["path"],
+                        created_at=row["created_at"],
+                    ),
+                    dist,
+                )
+            )
+        scored.sort(key=lambda t: t[1])
+        return scored[:top_k]
+
+    async def delete(self, chunk_id: str) -> bool:
+        return await asyncio.to_thread(self._delete_sync, chunk_id)
+
+    def _delete_sync(self, chunk_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM memory_chunk WHERE chunk_id = ?", (chunk_id,)
+            )
+            return cur.rowcount > 0
+
+    async def get(self, chunk_id: str) -> MemoryChunk | None:
+        return await asyncio.to_thread(self._get_sync, chunk_id)
+
+    def _get_sync(self, chunk_id: str) -> MemoryChunk | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM memory_chunk WHERE chunk_id = ?", (chunk_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return MemoryChunk(
+            chunk_id=row["chunk_id"],
+            content=row["content"],
+            embedding=json.loads(row["embedding"]) if row["embedding"] else None,
+            metadata=json.loads(row["metadata"]),
+            path=row["path"],
+            created_at=row["created_at"],
+        )
+
+    async def count(self) -> int:
+        return await asyncio.to_thread(self._count_sync)
+
+    def _count_sync(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM memory_chunk").fetchone()
+        return int(row["n"])
+
+
+def _cosine_distance(a: list[float], b: list[float]) -> float:
+    """1 - cos(a,b)；零向量按最远距离处理。"""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return 1.0
+    return 1.0 - dot / (na * nb)
+
+
+async def make_memory_store(kind: str, **kwargs: Any) -> MemoryStore:
+    """工厂：kind ∈ {"pgvector", "sqlite"}。"""
+    if kind == "pgvector":
+        return PgVectorMemoryStore(pool=kwargs["pool"], dim=kwargs.get("dim", 1536))
+    if kind == "sqlite":
+        return SqliteMemoryStore(db_path=kwargs["db_path"], dim=kwargs.get("dim", 1536))
+    raise ValueError(f"unknown memory store kind: {kind!r}")
