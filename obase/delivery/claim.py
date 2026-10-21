@@ -31,6 +31,14 @@ An unregistered table raises ``ValueError`` *before* interpolation, so no
 attacker-controlled identifier can reach the query. All values flow through
 ``$N`` bind parameters.
 
+Claimability contract
+---------------------
+The lease predicate ("free, or stale lease") is the mechanism's own. Whether a
+row is *finished* is business knowledge, so the caller declares it at
+registration time as ``claimable_filter`` (e.g. ``"acked_at IS NULL"``). Without
+it, ``ack`` would clear the lease and the row would immediately become
+claimable again — a silent double-delivery.
+
 Column contract
 ---------------
 The claim query needs to know which columns to ``RETURNING``. That set is
@@ -40,6 +48,7 @@ because "what a row looks like" is the caller's schema, not this module's.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import structlog
@@ -53,6 +62,7 @@ __all__ = [
     "claim_batch",
     "register_claimable_table",
     "registered_claim_columns",
+    "registered_claim_filter",
 ]
 
 #: Lease bookkeeping columns every claimable table must have. These are the
@@ -70,16 +80,45 @@ DEFAULT_ALLOWED_TABLES: frozenset[str] = frozenset()
 #: table -> columns to RETURNING. Populated by :func:`register_claimable_table`.
 _CLAIM_COLUMNS: dict[str, tuple[str, ...]] = {}
 
+#: table -> extra claimability predicate (SQL fragment, ``TRUE`` when unset).
+#: Populated by :func:`register_claimable_table`.
+_CLAIM_FILTERS: dict[str, str] = {}
+
 #: Tables permitted without per-table column registration.
 _UNREGISTERED_ALLOWED: set[str] = set()
+
+
+#: A claim filter must be a bare boolean SQL expression over the row's own
+#: columns: no statement separator, no comment syntax, no sub-select. It is
+#: interpolated into the claim query, so a too-permissive pattern here would be
+#: an injection hole (the filter comes from the application, not from a request).
+_FILTER_RE = re.compile(r"^[A-Za-z0-9_\s().=<>!'+]*$")
+
+#: Words that turn a predicate into a statement or a sub-select.
+_FILTER_FORBIDDEN = re.compile(
+    r"\b(select|from|insert|update|delete|drop|alter|grant|union|exists|copy|pg_\w+)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_claimable_filter(table: str, claimable_filter: str) -> str:
+    """Return ``claimable_filter`` if it is a bare boolean expression."""
+    stripped = claimable_filter.strip()
+    if not stripped or not _FILTER_RE.match(stripped) or _FILTER_FORBIDDEN.search(stripped):
+        raise ValueError(
+            f"claimable_filter for {table!r} must be a bare boolean expression "
+            f"over the row's own columns, got {claimable_filter!r}"
+        )
+    return stripped
 
 
 def register_claimable_table(
     table: str,
     *,
     columns: tuple[str, ...] | list[str] | None = None,
+    claimable_filter: str | None = None,
 ) -> None:
-    """Allow ``table`` to be claimed, optionally declaring its RETURNING columns.
+    """Allow ``table`` to be claimed, optionally declaring its shape.
 
     Call this once at application start-up for every table a dispatcher polls.
     Registration is global to the process, which matches the lifetime of the
@@ -89,11 +128,18 @@ def register_claimable_table(
         table: Physical table name. Interpolated into SQL, hence the allow-list.
         columns: Columns to return from ``claim_batch``. Must include ``id`` and
             the lease columns. Defaults to :data:`DEFAULT_CLAIM_COLUMNS`.
+        claimable_filter: Extra SQL predicate deciding whether a row is still
+            work to do, e.g. ``"acked_at IS NULL AND push_status IS NULL"``.
+            The mechanism's own lease predicate (free or stale lease) is always
+            applied on top, so this only has to describe the *business* notion
+            of "finished". Defaults to ``None`` (every row is claimable once
+            free).
 
     Raises:
-        ValueError: if ``columns`` omits a required column, or if ``table`` was
-            already registered with a *different* column set (catches two
-            subsystems disagreeing about one table's shape).
+        ValueError: if ``columns`` omits a required column, if ``claimable_filter``
+            is not a bare boolean expression, or if ``table`` was already
+            registered with a *different* shape (catches two subsystems
+            disagreeing about one table).
 
     Examples
     --------
@@ -101,6 +147,7 @@ def register_claimable_table(
     ...     "outbox",
     ...     columns=("id", "created_at", "payload", "claimed_by",
     ...              "claimed_at", "retry_count"),
+    ...     claimable_filter="acked_at IS NULL",
     ... )
     """
     resolved = tuple(columns) if columns is not None else DEFAULT_CLAIM_COLUMNS
@@ -108,19 +155,36 @@ def register_claimable_table(
     if missing:
         raise ValueError(f"claim columns for {table!r} missing required: {sorted(missing)}")
 
+    if claimable_filter is not None:
+        claimable_filter = _validate_claimable_filter(table, claimable_filter)
+
     existing = _CLAIM_COLUMNS.get(table)
     if existing is not None and existing != resolved:
         raise ValueError(
             f"table {table!r} already registered with different columns "
             f"({existing!r} != {resolved!r})"
         )
+    existing_filter = _CLAIM_FILTERS.get(table)
+    if existing_filter is not None and existing_filter != claimable_filter:
+        raise ValueError(
+            f"table {table!r} already registered with a different claimable_filter "
+            f"({existing_filter!r} != {claimable_filter!r})"
+        )
+
     _CLAIM_COLUMNS[table] = resolved
+    if claimable_filter is not None:
+        _CLAIM_FILTERS[table] = claimable_filter
     _UNREGISTERED_ALLOWED.add(table)
 
 
 def registered_claim_columns(table: str) -> tuple[str, ...]:
     """Return the RETURNING column set registered for ``table``."""
     return _CLAIM_COLUMNS.get(table, DEFAULT_CLAIM_COLUMNS)
+
+
+def registered_claim_filter(table: str) -> str:
+    """Return the extra claimability predicate registered for ``table``."""
+    return _CLAIM_FILTERS.get(table, "TRUE")
 
 
 def _validate_table(table: str) -> str:
@@ -190,6 +254,7 @@ async def claim_batch(
     """
     table = _validate_table(table)
     columns = ", ".join(registered_claim_columns(table))
+    claimable = registered_claim_filter(table)
 
     claim_sql = f"""
         UPDATE {table}
@@ -199,6 +264,7 @@ async def claim_batch(
             SELECT id FROM {table}
             WHERE (claimed_by IS NULL
                    OR claimed_at < NOW() - ($3::int * INTERVAL '1 second'))
+              AND ({claimable})
             ORDER BY created_at ASC
             LIMIT $1
             FOR UPDATE SKIP LOCKED

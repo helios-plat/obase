@@ -22,6 +22,7 @@ from obase.delivery.claim import (
     claim_batch,
     register_claimable_table,
     registered_claim_columns,
+    registered_claim_filter,
     release,
 )
 
@@ -32,10 +33,13 @@ TABLE = "outbox"
 def _clean_registry():
     """Keep the process-wide registry from leaking between tests."""
     saved_cols = dict(claim_mod._CLAIM_COLUMNS)
+    saved_filters = dict(claim_mod._CLAIM_FILTERS)
     saved_allowed = set(claim_mod._UNREGISTERED_ALLOWED)
     yield
     claim_mod._CLAIM_COLUMNS.clear()
     claim_mod._CLAIM_COLUMNS.update(saved_cols)
+    claim_mod._CLAIM_FILTERS.clear()
+    claim_mod._CLAIM_FILTERS.update(saved_filters)
     claim_mod._UNREGISTERED_ALLOWED.clear()
     claim_mod._UNREGISTERED_ALLOWED.update(saved_allowed)
 
@@ -114,6 +118,55 @@ def test_registered_claim_columns_roundtrip():
 
 def test_unregistered_lookup_returns_the_default_columns():
     assert registered_claim_columns("nope") == DEFAULT_CLAIM_COLUMNS
+
+
+def test_unregistered_lookup_returns_the_permissive_filter():
+    assert registered_claim_filter("nope") == "TRUE"
+
+
+def test_claimable_filter_roundtrip():
+    register_claimable_table("t", claimable_filter="acked_at IS NULL")
+    assert registered_claim_filter("t") == "acked_at IS NULL"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "acked_at IS NULL; DROP TABLE t",
+        "1=1 -- comment",
+        "EXISTS (SELECT 1 FROM secrets)",
+        "acked_at IS NULL /* x */",
+        "",
+    ],
+)
+def test_registration_rejects_non_boolean_claimable_filter(bad):
+    with pytest.raises(ValueError, match="claimable_filter"):
+        register_claimable_table("t", claimable_filter=bad)
+
+
+def test_registration_rejects_conflicting_claimable_filters():
+    register_claimable_table("t", claimable_filter="acked_at IS NULL")
+    with pytest.raises(ValueError, match="different claimable_filter"):
+        register_claimable_table("t", claimable_filter="push_status IS NULL")
+
+
+async def test_claim_batch_applies_the_registered_filter():
+    """Regression: without a filter, an acked row (lease cleared) is re-claimed."""
+    register_claimable_table(TABLE, claimable_filter="acked_at IS NULL")
+    conn = _Conn([])
+    await claim_batch(conn, TABLE, "w1", 10, 60)
+    query, _args = conn.fetches[0]
+    assert "AND (acked_at IS NULL)" in query
+    # the lease predicate is still the mechanism's own, always applied
+    assert "claimed_at < NOW()" in query
+
+
+async def test_claim_batch_without_filter_is_permissive():
+    register_claimable_table(TABLE)
+    conn = _Conn([])
+    await claim_batch(conn, TABLE, "w1", 10, 60)
+    query, _args = conn.fetches[0]
+    assert "AND (TRUE)" in query
 
 
 # ---------------------------------------------------------------------------

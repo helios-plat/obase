@@ -23,6 +23,12 @@ All notable changes to obase are documented in this file.
   * 未注册的表在插值**前**就 raise `ValueError`（SQL 注入防护不变）；
   * 租约簿记列（`claimed_by` / `claimed_at` / `retry_count`）作为机制自身
     契约固定，业务列由调用方声明。
+- feat: `register_claimable_table(..., claimable_filter=...)` —— **认领可行性谓词**。
+  租约谓词（空闲 / 租约过期）是机制自身的；"这行是否已经做完"是业务知识，
+  必须由调用方声明（如 `"acked_at IS NULL AND push_status IS NULL"`）。缺了它，
+  `ack` 把 `claimed_by`/`claimed_at` 置空后该行立刻重新可认领 —— 静默重复投递。
+  谓词在注册时按"裸布尔表达式"校验（拒绝 `;`、注释、子查询），默认 `None`
+  即 `TRUE`（宽松，向后兼容）。
 - 行为保持：`claim_batch` / `release` / `ack` 失败只 log 不 raise（dispatcher
 tick 不能崩）。
 
@@ -46,10 +52,13 @@ tick 不能崩）。
 - 未改动：已是纯基础设施，无项目耦合，原样入主库。
 
 ### Tests
-- 新增 `tests/test_delivery_claim.py` (25)、`tests/test_market_trade_calendar.py` (24)、
+- 新增 `tests/test_delivery_claim.py` (35)、`tests/test_market_trade_calendar.py` (24)、
   `tests/test_isolated_task_runner.py` (18)
-- 全套：`1072 passed`，与基线**完全一致**（9 项既有失败 + 1 项
-  `test_docker_module.py` 收集错误，均与本次无关）
+- 全套：`1082 passed, 9 failed`（`--ignore=tests/test_docker_module.py`，该文件
+  因缺 `docker` 依赖无法收集）。9 项失败为**既有失败**（`test_cache` 分布式锁 4 项、
+  `test_cross_capability_integration` 2 项、`test_veya_frontier_obase` SMT 2 项、
+  `test_veya_p12_obase` 1 项），与本次改动无关；通过数 1072 → 1082 正好是
+  `test_delivery_claim.py` 新增的 10 项。
 
 ## [0.17.0] — 2026-07-04
 
