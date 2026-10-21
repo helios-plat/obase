@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.31.0"
+__version__ = "0.32.2"
 
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
@@ -11,6 +11,8 @@ __version__ = "0.31.0"
 from obase import (
     audit,
     collector_base,
+    delivery,
+    market,
     email_client,
     environ_processor_base,
     notify,
@@ -113,6 +115,9 @@ __all__ = [
     "webhook",
     # W抽-01 submodules
     "collector_base",
+    # Upstreamed from the Tide consumer line (v0.32.0)
+    "delivery",
+    "market",
     "email_client",
     "environ_processor_base",
     "ohlcv_store",

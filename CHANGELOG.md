@@ -4,6 +4,95 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.32.2] — 2026-10-22
+
+### Changed
+
+- 与 `origin/main` 合并。冲突（14 个 add/add 文件）全部取 `origin/main` 版本：
+  内容相同但已过格式化，另含两处真实修复（`persistent_store` doctest、
+  `smt_solver_adapter` 的 `timeout_ms <= 0` 校验）与
+  `test_cross_capability_integration` 的状态名修正。
+
+### Tests
+- `1091 passed, 5 failed`（`--ignore=tests/test_docker_module.py`，缺 `docker` 依赖
+  无法收集）。5 项为既有失败（`test_cache` 分布式锁 4 项 +
+  `test_cross_capability_integration::test_context_loop_composition`）。
+  合并前是 `1082 passed, 9 failed` —— 消失的 4 项由 `origin/main` 的修复带来。
+
+## [0.32.1] — 2026-10-22
+
+### Fixed
+
+- **`obase.delivery.claim_batch` 会重复投递已 ack 的行**（v0.32.0 的回归）。
+  `ack` 把 `claimed_by` / `claimed_at` 置空，而认领查询只判断租约，于是刚投递
+  成功的行立刻重新可认领 —— 正是本模块要消灭的重复投递。修复方式见 v0.32.0 的
+  `claimable_filter` 条目：认领可行性由调用方声明（Tide 用
+  `"push_status IS NULL AND acked_at IS NULL"`），机制自身的租约谓词照旧叠加。
+- 该谓词在注册时按"裸布尔表达式"校验（拒绝 `;`、注释、`SELECT`/`FROM`/`EXISTS`
+  等），因为它会被插值进 SQL。
+- 新增 `registered_claim_filter()` 供诊断/审计读取当前生效的谓词。
+
+### Tests
+- `tests/test_delivery_claim.py` 25 → 35（谓词往返、注入拒绝、以及
+  "谓词必须出现在 SQL 里" 的回归断言）。
+- 全套：`1082 passed, 9 failed`，9 项均为既有失败（见 0.32.0 说明）。
+
+## [0.32.0] — 2026-10-22
+
+### Added (upstreaming consumer patches — 3O 主库成为唯一来源)
+
+合回 tide 使用方线上「上游没有」的三个 obase 基础设施能力。三者都是
+「与外部系统通信 + 横切机制」，按 SPEC §7 归 obase（不是 oprim）。
+详见 `/data/soffy/projects/ext/3o_upstream_report.md`。
+
+**`obase.delivery` — 至多一次投递的原子批量认领 (新子模块)**
+- feat: `claim_batch` / `release` / `ack` —— 基于
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING`
+  的行级租约，解决多 worker 重复投递 + 崩溃 worker 持锁不释放。
+- feat: `register_claimable_table(table, *, columns)` —— **表名白名单注册**。
+  原实现把 `tide_alerts` 和 tide 的业务列名硬编码在 obase 里（违反
+  SPEC §2.4 禁项目前缀），且 `ALLOWED_TABLES` 只有一张表。现改为：
+  * 表名 + RETURNING 列集由应用启动时注册（默认白名单为空）；
+  * 未注册的表在插值**前**就 raise `ValueError`（SQL 注入防护不变）；
+  * 租约簿记列（`claimed_by` / `claimed_at` / `retry_count`）作为机制自身
+    契约固定，业务列由调用方声明。
+- feat: `register_claimable_table(..., claimable_filter=...)` —— **认领可行性谓词**。
+  租约谓词（空闲 / 租约过期）是机制自身的；"这行是否已经做完"是业务知识，
+  必须由调用方声明（如 `"acked_at IS NULL AND push_status IS NULL"`）。缺了它，
+  `ack` 把 `claimed_by`/`claimed_at` 置空后该行立刻重新可认领 —— 静默重复投递。
+  谓词在注册时按"裸布尔表达式"校验（拒绝 `;`、注释、子查询），默认 `None`
+  即 `TRUE`（宽松，向后兼容）。
+- 行为保持：`claim_batch` / `release` / `ack` 失败只 log 不 raise（dispatcher
+tick 不能崩）。
+
+**`obase.market.trade_calendar` — 交易日历查询 (新子模块)**
+- feat: `lookup_trading_day(pool, d, *, table=None)` —— 原始日历判定，
+  无法回答时返回 `None`（不套 weekday 启发式），留给有更好第二意见的调用方。
+- feat: `is_trading_day(pool, d, *, table=None)` —— 日历判定 + Mon–Fri 降级，
+  返回 `(verdict, source)` 标明结果来源。
+- feat: `configure_calendar_table(table)` —— 进程级默认表名，调用点不必重传。
+- 去项目化：原实现把 `tide_trade_calendar` 写死在 SQL 与 `SOURCE_TABLE` 常量里。
+  现改为 `table=` 参数 + `_IDENT_RE` 标识符校验（表名不能做 bind 参数，
+  所以必须先校验再插值），未配置默认表时 raise `ValueError`。
+
+**`obase.isolated_task_runner` — spawn 隔离的任务执行器 (新模块)**
+- feat: `IsolatedTaskRunner` —— 每个任务在干净的 `spawn` 子进程里跑，
+  带全局并发上限、单任务 wall-clock 超时（SIGTERM → SIGKILL）、
+  `RLIMIT_AS` 内存上限 + 父侧 RSS 看门狗、持久化 run_id 与状态、
+  取消、以及安全的结果/异常传输（异常只传字符串，不跨进程传对象）。
+- feat: `TaskStatusStore` Protocol + `InMemoryTaskStatusStore` /
+  `JsonFileTaskStatusStore`（重启后可按 run_id 重连，孤儿记录标 `interrupted`）。
+- 未改动：已是纯基础设施，无项目耦合，原样入主库。
+
+### Tests
+- 新增 `tests/test_delivery_claim.py` (35)、`tests/test_market_trade_calendar.py` (24)、
+  `tests/test_isolated_task_runner.py` (18)
+- 全套：`1082 passed, 9 failed`（`--ignore=tests/test_docker_module.py`，该文件
+  因缺 `docker` 依赖无法收集）。9 项失败为**既有失败**（`test_cache` 分布式锁 4 项、
+  `test_cross_capability_integration` 2 项、`test_veya_frontier_obase` SMT 2 项、
+  `test_veya_p12_obase` 1 项），与本次改动无关；通过数 1072 → 1082 正好是
+  `test_delivery_claim.py` 新增的 10 项。
+
 ## [0.17.0] — 2026-07-04
 
 ### Added (C5 — provider 健康/余额活状态)
