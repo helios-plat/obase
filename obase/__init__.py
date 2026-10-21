@@ -16,6 +16,8 @@ from typing import Any
 
 __version__ = "0.31.0"
 
+from obase.daemon_bus import IDaemon_Bus, IDaemon_Subscription
+
 # --- core imports: stdlib-only or light deps (structlog, yaml, httpx, pydantic) ---
 from obase.bootstrap import bootstrap, load_env
 from obase.cache import Cache, DistributedLock, cached
