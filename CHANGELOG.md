@@ -4,6 +4,53 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.32.0] — 2026-10-22
+
+### Added (upstreaming consumer patches — 3O 主库成为唯一来源)
+
+合回 tide 使用方线上「上游没有」的三个 obase 基础设施能力。三者都是
+「与外部系统通信 + 横切机制」，按 SPEC §7 归 obase（不是 oprim）。
+详见 `/data/soffy/projects/ext/3o_upstream_report.md`。
+
+**`obase.delivery` — 至多一次投递的原子批量认领 (新子模块)**
+- feat: `claim_batch` / `release` / `ack` —— 基于
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING`
+  的行级租约，解决多 worker 重复投递 + 崩溃 worker 持锁不释放。
+- feat: `register_claimable_table(table, *, columns)` —— **表名白名单注册**。
+  原实现把 `tide_alerts` 和 tide 的业务列名硬编码在 obase 里（违反
+  SPEC §2.4 禁项目前缀），且 `ALLOWED_TABLES` 只有一张表。现改为：
+  * 表名 + RETURNING 列集由应用启动时注册（默认白名单为空）；
+  * 未注册的表在插值**前**就 raise `ValueError`（SQL 注入防护不变）；
+  * 租约簿记列（`claimed_by` / `claimed_at` / `retry_count`）作为机制自身
+    契约固定，业务列由调用方声明。
+- 行为保持：`claim_batch` / `release` / `ack` 失败只 log 不 raise（dispatcher
+tick 不能崩）。
+
+**`obase.market.trade_calendar` — 交易日历查询 (新子模块)**
+- feat: `lookup_trading_day(pool, d, *, table=None)` —— 原始日历判定，
+  无法回答时返回 `None`（不套 weekday 启发式），留给有更好第二意见的调用方。
+- feat: `is_trading_day(pool, d, *, table=None)` —— 日历判定 + Mon–Fri 降级，
+  返回 `(verdict, source)` 标明结果来源。
+- feat: `configure_calendar_table(table)` —— 进程级默认表名，调用点不必重传。
+- 去项目化：原实现把 `tide_trade_calendar` 写死在 SQL 与 `SOURCE_TABLE` 常量里。
+  现改为 `table=` 参数 + `_IDENT_RE` 标识符校验（表名不能做 bind 参数，
+  所以必须先校验再插值），未配置默认表时 raise `ValueError`。
+
+**`obase.isolated_task_runner` — spawn 隔离的任务执行器 (新模块)**
+- feat: `IsolatedTaskRunner` —— 每个任务在干净的 `spawn` 子进程里跑，
+  带全局并发上限、单任务 wall-clock 超时（SIGTERM → SIGKILL）、
+  `RLIMIT_AS` 内存上限 + 父侧 RSS 看门狗、持久化 run_id 与状态、
+  取消、以及安全的结果/异常传输（异常只传字符串，不跨进程传对象）。
+- feat: `TaskStatusStore` Protocol + `InMemoryTaskStatusStore` /
+  `JsonFileTaskStatusStore`（重启后可按 run_id 重连，孤儿记录标 `interrupted`）。
+- 未改动：已是纯基础设施，无项目耦合，原样入主库。
+
+### Tests
+- 新增 `tests/test_delivery_claim.py` (25)、`tests/test_market_trade_calendar.py` (24)、
+  `tests/test_isolated_task_runner.py` (18)
+- 全套：`1072 passed`，与基线**完全一致**（9 项既有失败 + 1 项
+  `test_docker_module.py` 收集错误，均与本次无关）
+
 ## [0.17.0] — 2026-07-04
 
 ### Added (C5 — provider 健康/余额活状态)
