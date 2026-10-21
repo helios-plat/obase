@@ -178,6 +178,15 @@ class MCPServer:
         """
         handler = skill_def.handler
 
+        # 显式重复注册拒绝（FastMCP 静默覆盖，这里按语义抛错）
+        try:
+            if skill_def.name in self._fastmcp._tool_manager._tools:
+                raise MCPServerError(
+                    f"Skill {skill_def.name!r} already registered"
+                )
+        except AttributeError:  # pragma: no cover - FastMCP 内部结构变动
+            pass
+
         async def _wrapper(**kwargs: Any) -> Any:
             return await handler(kwargs)
 
@@ -199,6 +208,40 @@ class MCPServer:
         tool = self._fastmcp._tool_manager._tools[skill_def.name]
         tool.parameters = skill_def.input_schema
         tool.fn_metadata = _DYNAMIC_FUNC_META
+
+    # ------------------------------------------------------------------
+    # 工具清单（供 oprim.mcp_register_tool / omodul.mcp_tool_export_workflow）
+    # ------------------------------------------------------------------
+
+    def list_tools(self) -> list[dict[str, Any]]:
+        """列出已注册工具：{name, description, input_schema}。
+
+        Raises:
+            MCPServerError: FastMCP 内部工具表不可访问。
+        """
+        try:
+            tools = self._fastmcp._tool_manager._tools.values()
+        except AttributeError as exc:  # pragma: no cover - FastMCP 内部结构变动
+            raise MCPServerError(f"Cannot access FastMCP tool registry: {exc}") from exc
+        return [
+            {
+                "name": t.name,
+                "description": t.description or "",
+                "input_schema": t.parameters or {},
+            }
+            for t in tools
+        ]
+
+    def has_tool(self, name: str) -> bool:
+        """是否已注册指定工具名。"""
+        try:
+            return name in self._fastmcp._tool_manager._tools
+        except AttributeError:  # pragma: no cover
+            return False
+
+    def tool_names(self) -> list[str]:
+        """已注册工具名列表。"""
+        return [t["name"] for t in self.list_tools()]
 
     async def serve_stdio(self) -> None:
         """Run the server using stdio transport.

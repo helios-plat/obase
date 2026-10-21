@@ -38,12 +38,22 @@ ACP_TURN_METHOD = "session/prompt"
 
 @dataclass
 class ACPCapabilities:
-    """ACP agent capabilities (protocol shapes only)。"""
+    """ACP agent capabilities (protocol shapes only)。
+
+    D5: ``supports_mcp_attachment`` / ``supports_mcp_refresh`` /
+    ``supports_session_close`` are declaration-driven — set only from
+    explicit upstream ``initialize`` evidence, defaulting to ``False``.
+    ``as_dict`` keeps the original four transport keys (pinned contract);
+    the D5 flags are read as attributes.
+    """
 
     streaming: bool = False
     resume: bool = False
     cancel: bool = False
     tools: bool = False
+    supports_mcp_attachment: bool = False
+    supports_mcp_refresh: bool = False
+    supports_session_close: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, bool]:
@@ -122,16 +132,22 @@ class ACPAgentAdapter:
         return session
 
     async def capabilities(self) -> ACPCapabilities:
-        """取 ACP capabilities (initialize 握手派生)。"""
+        """取 ACP capabilities (initialize 握手派生,声明驱动)。"""
         init = await self.initialize()
         caps = init.get("capabilities", init) if isinstance(init, dict) else {}
         if not isinstance(caps, dict):
             caps = {}
+        mcp_declared = caps.get("mcp") if isinstance(caps.get("mcp"), dict) else {}
         return ACPCapabilities(
             streaming=bool(caps.get("streaming", False)),
             resume=bool(caps.get("resume", False)),
             cancel=bool(caps.get("cancel", True)),
             tools=bool(caps.get("tools", False)),
+            supports_mcp_attachment=bool(
+                mcp_declared.get("attachment", mcp_declared.get("attach", False))
+            ),
+            supports_mcp_refresh=bool(mcp_declared.get("refresh", False)),
+            supports_session_close=bool(caps.get("session_close", caps.get("close", False))),
             raw=caps,
         )
 
@@ -197,18 +213,47 @@ class ACPAgentAdapter:
             return await self.turn(session_id, prompt)
         return {"session_id": session_id, "status": "active"}
 
+    async def close(self, session_id: str) -> dict[str, Any]:
+        """关闭会话:尽力而为的远端 session/close + 保证本地 detach。
+
+        D5 session-scoped teardown contract. 幂等:未知会话也返回成功
+        (无可清理)。若对端不支持远端关闭,诚实报告
+        ``remote_close_supported=False`` 而不伪装,本地 detach 照常完成。
+        """
+        remote_supported: bool | None = None
+        remote_error: str | None = None
+        if session_id in self._sessions:
+            try:
+                await self._send(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": uuid.uuid4().hex[:8],
+                        "method": "session/close",
+                        "params": {"sessionId": session_id},
+                    }
+                )
+                remote_supported = True
+            except ACPAdapterError as exc:
+                remote_supported = False
+                remote_error = str(exc)
+        self._sessions.pop(session_id, None)
+        self._cancelled.discard(session_id)
+        return {
+            "session_id": session_id,
+            "closed": True,
+            "remote_close_supported": bool(remote_supported),
+            "remote_close_error": remote_error,
+        }
+
     # -- 内部: adapt to HarnessRunResult (不反向污染 canonical contract) ---------
     def to_harness_result(self, session_id: str, turn_result: dict[str, Any]) -> Any:
         """ACP turn -> HarnessRunResult (延迟导入,避免 schema 泄漏)。"""
-        from obase.harness_adapter import HarnessRunResult
+        from obase.harness_adapter import HarnessRunResult, normalize_status
 
         session = self._sessions.get(session_id)
-        status = str(turn_result.get("status", "ok"))
-        if status not in ("ok", "error", "cancelled", "running"):
-            status = "ok"
         return HarnessRunResult(
             run_id=session.run_id if session else session_id,
-            status=status,
+            status=normalize_status(turn_result.get("status", "completed")),
             output=str(turn_result.get("output", "")),
             usage=dict(turn_result.get("usage") or {}),
             error=turn_result.get("error"),
