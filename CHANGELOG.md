@@ -4,6 +4,21 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.32.2] — 2026-10-22
+
+### Changed
+
+- 与 `origin/main` 合并。冲突（14 个 add/add 文件）全部取 `origin/main` 版本：
+  内容相同但已过格式化，另含两处真实修复（`persistent_store` doctest、
+  `smt_solver_adapter` 的 `timeout_ms <= 0` 校验）与
+  `test_cross_capability_integration` 的状态名修正。
+
+### Tests
+- `1091 passed, 5 failed`（`--ignore=tests/test_docker_module.py`，缺 `docker` 依赖
+  无法收集）。5 项为既有失败（`test_cache` 分布式锁 4 项 +
+  `test_cross_capability_integration::test_context_loop_composition`）。
+  合并前是 `1082 passed, 9 failed` —— 消失的 4 项由 `origin/main` 的修复带来。
+
 ## [0.32.1] — 2026-10-22
 
 ### Fixed
