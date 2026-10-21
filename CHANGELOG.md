@@ -4,6 +4,24 @@ All notable changes to obase are documented in this file.
 
 ---
 
+## [0.32.1] — 2026-10-22
+
+### Fixed
+
+- **`obase.delivery.claim_batch` 会重复投递已 ack 的行**（v0.32.0 的回归）。
+  `ack` 把 `claimed_by` / `claimed_at` 置空，而认领查询只判断租约，于是刚投递
+  成功的行立刻重新可认领 —— 正是本模块要消灭的重复投递。修复方式见 v0.32.0 的
+  `claimable_filter` 条目：认领可行性由调用方声明（Tide 用
+  `"push_status IS NULL AND acked_at IS NULL"`），机制自身的租约谓词照旧叠加。
+- 该谓词在注册时按"裸布尔表达式"校验（拒绝 `;`、注释、`SELECT`/`FROM`/`EXISTS`
+  等），因为它会被插值进 SQL。
+- 新增 `registered_claim_filter()` 供诊断/审计读取当前生效的谓词。
+
+### Tests
+- `tests/test_delivery_claim.py` 25 → 35（谓词往返、注入拒绝、以及
+  "谓词必须出现在 SQL 里" 的回归断言）。
+- 全套：`1082 passed, 9 failed`，9 项均为既有失败（见 0.32.0 说明）。
+
 ## [0.32.0] — 2026-10-22
 
 ### Added (upstreaming consumer patches — 3O 主库成为唯一来源)
