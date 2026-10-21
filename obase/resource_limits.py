@@ -84,13 +84,19 @@ DEFAULT_ENVELOPE = ResourceEnvelope(name="default-denied")
 def validate_envelope(envelope: ResourceEnvelope) -> None:
     """校验信封数值合法性（负值/非法模式抛 ValueError）。"""
     if envelope.cpu_seconds < 0 or envelope.wallclock_s < 0 or envelope.memory_mb < 0:
-        raise ValueError("resource_limits: cpu_seconds/wallclock_s/memory_mb must be >= 0")
+        raise ValueError(
+            "resource_limits: cpu_seconds/wallclock_s/memory_mb must be >= 0"
+        )
     if envelope.network.mode not in ("deny_all", "allowlist"):
-        raise ValueError(f"resource_limits: unknown network mode {envelope.network.mode!r}")
+        raise ValueError(
+            f"resource_limits: unknown network mode {envelope.network.mode!r}"
+        )
     for scope in envelope.write_scope:
         p = Path(scope)
         if not p.is_absolute():
-            raise ValueError(f"resource_limits: write_scope must be absolute: {scope!r}")
+            raise ValueError(
+                f"resource_limits: write_scope must be absolute: {scope!r}"
+            )
 
 
 def write_allowed(envelope: ResourceEnvelope, path: str | Path) -> bool:

@@ -121,7 +121,9 @@ def _b64d(data: str) -> bytes:
 
 
 def _sign(secret: str, payload_b64: str) -> str:
-    digest = hmac.new(secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).digest()
+    digest = hmac.new(
+        secret.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+    ).digest()
     return _b64e(digest)
 
 
@@ -153,7 +155,9 @@ def issue_capability_token(
         "exp": now + ttl_s if ttl_s > 0 else 0.0,
         "nonce": nonce or secrets.token_hex(8),
     }
-    payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = _b64e(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    )
     return f"{payload_b64}.{_sign(secret, payload_b64)}"
 
 

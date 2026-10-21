@@ -12,7 +12,6 @@ from obase.skills_registry import SkillsRegistry, SkillsRegistryError
 # SkillsRegistry
 # ============================================================================
 
-
 class TestSkillsRegistry:
     def test_match_python_extension(self):
         reg = SkillsRegistry()
@@ -83,7 +82,6 @@ class TestSkillsRegistry:
 # AdaptiveScraper
 # ============================================================================
 
-
 class TestAdaptiveScraper:
     """D0 迁移: obase.adaptive_scraper 唯一实现 = 可调用入口 (Veya L4 resolve_element 依赖)。"""
 
@@ -105,7 +103,6 @@ class TestAdaptiveScraper:
 # ============================================================================
 # DltPipelineStore
 # ============================================================================
-
 
 class TestDltPipelineStore:
     def test_auto_infer_and_load(self):

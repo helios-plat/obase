@@ -82,6 +82,21 @@ class DebouncedMemoryQueue:
     def pending_count(self) -> int:
         return len(self._pending)
 
+    async def pop(self, key: str) -> dict[str, Any] | None:
+        """Pop and return the pending update for ``key``, or None if nothing queued.
+
+        Flushes the queue entry to disk first so the returned value is the
+        authoritative persisted state.
+        """
+        async with self._lock:
+            if key in self._pending:
+                timer = self._timers.get(key)
+                if timer is not None:
+                    timer.cancel()
+                await self._flush_one(key)
+                return self.load(key)
+            return None
+
 
 def _safe(key: str) -> str:
     return key.replace("/", "_").replace(":", "_").replace("\\", "_")

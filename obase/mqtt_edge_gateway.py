@@ -40,7 +40,6 @@ class MQTTEdgeGateway:
         if self._mqtt_available is None:
             try:
                 import paho.mqtt.client as _mqtt  # noqa: F401
-
                 self._mqtt_available = True
             except ImportError:
                 self._mqtt_available = False
@@ -57,7 +56,6 @@ class MQTTEdgeGateway:
             return False
         try:
             import paho.mqtt.client as mqtt
-
             self._client = mqtt.Client(client_id=self.client_id)
             self._client.connect(self.broker_host, self.port, keepalive=60)
             self._client.loop_start()

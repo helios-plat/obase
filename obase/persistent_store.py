@@ -16,8 +16,11 @@
 
 例:
     >>> store = PersistentStore("/tmp/ps_demo")
-    >>> doc = CausalGraphDoc(nodes=["a", "b"], edges=[("a", "b")]).to_dict()
-    >>> rev = store.save("causal_graph", "core", doc, author="system", reason="init")
+    >>> rev = store.save(
+    ...     "causal_graph", "core",
+    ...     CausalGraphDoc(nodes=["a", "b"], edges=[("a", "b")]).to_dict(),
+    ... )
+    ...                   author="system", reason="init")
     >>> store.load_latest("causal_graph", "core")["nodes"]
     ['a', 'b']
 """
@@ -249,7 +252,9 @@ class PersistentStore:
             with event_file.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
 
-            rev = self._vsn.snapshot([current_file], message=f"{kind}:{key}:{reason or 'update'}")
+            rev = self._vsn.snapshot(
+                [current_file], message=f"{kind}:{key}:{reason or 'update'}"
+            )
             return rev
 
     # ------------------------------------------------------------------
@@ -284,7 +289,8 @@ class PersistentStore:
         """该资产的全部版本元数据（时间倒序）。"""
         marker = f"{kind}/{key}.json"
         return [
-            v for v in self._vsn.list_versions() if any(marker in p for p in v.get("paths", []))
+            v for v in self._vsn.list_versions()
+            if any(marker in p for p in v.get("paths", []))
         ]
 
     def history(self, kind: str, key: str) -> list[dict[str, Any]]:
@@ -324,7 +330,9 @@ class PersistentStore:
         """
         doc = self.load_version(kind, key, to_rev)
         if doc is None:
-            raise PersistentStoreError(f"rollback: version {to_rev!r} not found for {kind}:{key}")
+            raise PersistentStoreError(
+                f"rollback: version {to_rev!r} not found for {kind}:{key}"
+            )
         return self.save(kind, key, doc, author=author, reason=reason)
 
     @staticmethod

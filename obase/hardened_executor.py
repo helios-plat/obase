@@ -115,7 +115,9 @@ class ActionLog:
                 try:
                     self._path.parent.mkdir(parents=True, exist_ok=True)
                     with self._path.open("a", encoding="utf-8") as f:
-                        f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+                        f.write(
+                            json.dumps(entry, ensure_ascii=False, default=str) + "\n"
+                        )
                 except OSError as exc:
                     raise ActionLogError(f"ActionLog: write failed: {exc}") from exc
 
@@ -224,7 +226,9 @@ class HardenedExecutor:
     # 内部守卫
     # ------------------------------------------------------------------
 
-    def _verify(self, token_str: str | None, *, required_capability: str | None) -> CapabilityToken:
+    def _verify(
+        self, token_str: str | None, *, required_capability: str | None
+    ) -> CapabilityToken:
         if not token_str:
             raise CapabilityDeniedError("hardened_executor: missing CapabilityToken")
         token = verify_capability_token(self._secret, token_str)
@@ -307,14 +311,12 @@ class HardenedExecutor:
             msg = "circuit OPEN: execution rejected"
             if audit:
                 self._audit(
-                    action="execute",
-                    token=tok,
-                    capability=cap,
-                    outcome="blocked",
-                    detail={"reason": msg},
+                    action="execute", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": msg},
                 )
             return ExecutionResult(
-                status="blocked", error=msg, elapsed_ms=int((time.monotonic() - t0) * 1000)
+                status="blocked", error=msg,
+                elapsed_ms=int((time.monotonic() - t0) * 1000),
             )
 
         if use_rate_limit:
@@ -323,15 +325,11 @@ class HardenedExecutor:
             except Exception as exc:
                 if audit:
                     self._audit(
-                        action="execute",
-                        token=tok,
-                        capability=cap,
-                        outcome="blocked",
-                        detail={"reason": f"rate limit: {exc}"},
+                        action="execute", token=tok, capability=cap,
+                        outcome="blocked", detail={"reason": f"rate limit: {exc}"},
                     )
                 return ExecutionResult(
-                    status="blocked",
-                    error=f"rate limit: {exc}",
+                    status="blocked", error=f"rate limit: {exc}",
                     elapsed_ms=int((time.monotonic() - t0) * 1000),
                 )
 
@@ -408,14 +406,12 @@ class HardenedExecutor:
             msg = "circuit OPEN: execution rejected"
             if audit:
                 self._audit(
-                    action="aexecute",
-                    token=tok,
-                    capability=cap,
-                    outcome="blocked",
-                    detail={"reason": msg},
+                    action="aexecute", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": msg},
                 )
             return ExecutionResult(
-                status="blocked", error=msg, elapsed_ms=int((time.monotonic() - t0) * 1000)
+                status="blocked", error=msg,
+                elapsed_ms=int((time.monotonic() - t0) * 1000),
             )
 
         if use_rate_limit and self._rate_limiter is not None:
@@ -428,15 +424,11 @@ class HardenedExecutor:
                 except Exception as exc:
                     if audit:
                         self._audit(
-                            action="aexecute",
-                            token=tok,
-                            capability=cap,
-                            outcome="blocked",
-                            detail={"reason": f"rate limit: {exc}"},
+                            action="aexecute", token=tok, capability=cap,
+                            outcome="blocked", detail={"reason": f"rate limit: {exc}"},
                         )
                     return ExecutionResult(
-                        status="blocked",
-                        error=f"rate limit: {exc}",
+                        status="blocked", error=f"rate limit: {exc}",
                         elapsed_ms=int((time.monotonic() - t0) * 1000),
                     )
 
@@ -532,15 +524,11 @@ class HardenedExecutor:
             reason = f"network denied by envelope: {firewall_reason}"
             if audit:
                 self._audit(
-                    action="subprocess",
-                    token=tok,
-                    capability=cap,
-                    outcome="blocked",
-                    detail={"reason": reason},
+                    action="subprocess", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": reason},
                 )
             return {
-                "status": "blocked",
-                "reason": reason,
+                "status": "blocked", "reason": reason,
                 "elapsed_ms": int((time.monotonic() - t0) * 1000),
             }
         if env_limits.network.mode == "allowlist":
@@ -549,25 +537,22 @@ class HardenedExecutor:
                 reason = f"egress host not allowed by envelope: {egress_host}"
                 if audit:
                     self._audit(
-                        action="subprocess",
-                        token=tok,
-                        capability=cap,
-                        outcome="blocked",
-                        detail={"reason": reason},
-                    )
+                    action="subprocess", token=tok, capability=cap,
+                    outcome="blocked", detail={"reason": reason},
+                )
                 return {
-                    "status": "blocked",
-                    "reason": reason,
-                    "elapsed_ms": int((time.monotonic() - t0) * 1000),
-                }
+                "status": "blocked", "reason": reason,
+                "elapsed_ms": int((time.monotonic() - t0) * 1000),
+            }
 
         probe = HoneypotProbe(self._honeypot_dir) if use_honeypot else None
         if probe is not None:
             probe.plant()
 
-        clean_env = (
-            self._sandbox.sanitized_env() if env_vars is None else self._sanitize_env(env_vars)
-        )
+        if env_vars is None:
+            clean_env = self._sandbox.sanitized_env()
+        else:
+            clean_env = self._sanitize_env(env_vars)
         run_result = await self._sandbox.run(
             command, timeout=env_limits.wallclock_s, cwd=cwd, env=clean_env
         )
@@ -601,16 +586,8 @@ class HardenedExecutor:
         """剥离代理变量与敏感凭据前缀。"""
         cleaned = dict(env)
         sensitive_prefixes = (
-            "AWS_",
-            "OPENAI_",
-            "ANTHROPIC_",
-            "DASHSCOPE_",
-            "GEMINI_",
-            "DEEPSEEK_",
-            "TOGETHER_",
-            "GROQ_",
-            "HF_",
-            "HUGGINGFACE_",
+            "AWS_", "OPENAI_", "ANTHROPIC_", "DASHSCOPE_", "GEMINI_",
+            "DEEPSEEK_", "TOGETHER_", "GROQ_", "HF_", "HUGGINGFACE_",
         )
         for key in list(cleaned):
             lower = key.lower()

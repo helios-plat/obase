@@ -91,7 +91,8 @@ class TestPluginLoader:
 
         p = tmp_path / "greet.py"
         p.write_text(
-            "# @name: greet\n# @version: 1.2.0\n\ndef main(name):\n    return f'hi {name}'\n"
+            "# @name: greet\n# @version: 1.2.0\n\n"
+            "def main(name):\n    return f'hi {name}'\n"
         )
         spec = load_python_plugin(p)
         assert spec.entry_points["main"]("x") == "hi x"
@@ -300,6 +301,10 @@ class TestGitWorktree:
         repo = tmp_path / "repo"
         repo.mkdir()
         result = await run_git(["init", "-b", "main"], cwd=repo)
+        assert result.ok, result.stderr
+        result = await run_git(["config", "user.name", "obase-test"], cwd=repo)
+        assert result.ok, result.stderr
+        result = await run_git(["config", "user.email", "obase-test@example.invalid"], cwd=repo)
         assert result.ok, result.stderr
         (repo / "f.txt").write_text("x")
         result = await run_git(["add", "."], cwd=repo)

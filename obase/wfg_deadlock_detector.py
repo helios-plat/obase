@@ -45,7 +45,7 @@ class WaitForGraph:
 
         def dfs(node: str) -> None:
             if node in path:
-                cycles.append(path[path.index(node) :])
+                cycles.append(path[path.index(node):])
                 return
             if node in visited:
                 return

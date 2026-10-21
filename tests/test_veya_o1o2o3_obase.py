@@ -12,7 +12,6 @@ from obase.wfg_deadlock_detector import WaitForGraph
 # WaitForGraph
 # ============================================================================
 
-
 class TestWaitForGraph:
     def test_init_empty(self):
         wfg = WaitForGraph()
@@ -82,7 +81,6 @@ class TestWaitForGraph:
 # LocalSandboxPool
 # ============================================================================
 
-
 class TestLocalSandboxPool:
     """D0 迁移: 断言对象 = Veya-lineage 唯一实现 (run_python + SandboxExecutionResult)。"""
 
@@ -137,7 +135,6 @@ class TestLocalSandboxPool:
 # ============================================================================
 # SnapshotStore
 # ============================================================================
-
 
 class TestSnapshotStore:
     def test_save_and_load(self, tmp_path: Path):

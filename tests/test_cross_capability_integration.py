@@ -215,7 +215,7 @@ async def test_acp_harness_composition():
     session = await acp.new_session()
     turn = await acp.turn(session.session_id, "go")
     hr = acp.to_harness_result(session.session_id, turn)
-    assert hr.status == "ok" and hr.output == "acp-out"
+    assert hr.status == "completed" and hr.output == "acp-out"
     assert hr.native_metadata["protocol"] == "acp"
 
 

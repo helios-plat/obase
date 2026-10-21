@@ -14,7 +14,6 @@ from obase.ssrf_safe_network import SSRFSafeNetwork
 # CheckpointStore
 # ============================================================================
 
-
 class TestCheckpointStore:
     """D0 迁移: 断言对象 = Veya-lineage 唯一实现 (save/load/keys/reset, SQLite WAL)。"""
 
@@ -62,7 +61,6 @@ class TestCheckpointStore:
 # ============================================================================
 # BrowserVisionRunner
 # ============================================================================
-
 
 class TestBrowserVisionRunner:
     def test_capture_page_returns_page_state(self):
@@ -117,7 +115,6 @@ class TestBrowserVisionRunner:
 # ============================================================================
 # SSRFSafeNetwork
 # ============================================================================
-
 
 class TestSSRFSafeNetwork:
     def test_public_url_is_safe(self):
