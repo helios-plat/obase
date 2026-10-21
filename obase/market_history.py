@@ -1,4 +1,5 @@
 """Read-only public OHLCV history from OKX or Deribit with bounded caching."""
+
 from __future__ import annotations
 
 import copy
@@ -15,12 +16,18 @@ OKX_URL = "https://www.okx.com/api/v5/market/history-candles"
 DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_tradingview_chart_data"
 _MAX_LIMIT = 300
 _BAR_MAP: dict[str, tuple[str, str | None, int]] = {
-    "1m": ("1m", "1", 60_000), "3m": ("3m", "3", 180_000),
-    "5m": ("5m", "5", 300_000), "15m": ("15m", "15", 900_000),
-    "30m": ("30m", "30", 1_800_000), "1h": ("1H", "60", 3_600_000),
-    "2h": ("2H", "120", 7_200_000), "4h": ("4H", "240", 14_400_000),
-    "6h": ("6Hutc", "360", 21_600_000), "12h": ("12Hutc", "720", 43_200_000),
-    "1d": ("1Dutc", "1D", 86_400_000), "1w": ("1Wutc", None, 604_800_000),
+    "1m": ("1m", "1", 60_000),
+    "3m": ("3m", "3", 180_000),
+    "5m": ("5m", "5", 300_000),
+    "15m": ("15m", "15", 900_000),
+    "30m": ("30m", "30", 1_800_000),
+    "1h": ("1H", "60", 3_600_000),
+    "2h": ("2H", "120", 7_200_000),
+    "4h": ("4H", "240", 14_400_000),
+    "6h": ("6Hutc", "360", 21_600_000),
+    "12h": ("12Hutc", "720", 43_200_000),
+    "1d": ("1Dutc", "1D", 86_400_000),
+    "1w": ("1Wutc", None, 604_800_000),
 }
 _CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
 _CACHE_LOCK = threading.Lock()
@@ -56,7 +63,11 @@ def _normalize_symbol(exchange: str, symbol: str) -> str:
         raise ValueError("symbol is required")
     if exchange == "okx":
         if "-" not in value:
-            value = f"{value[:-4]}-USDT" if value.endswith("USDT") and len(value) > 4 else f"{value}-USDT"
+            value = (
+                f"{value[:-4]}-USDT"
+                if value.endswith("USDT") and len(value) > 4
+                else f"{value}-USDT"
+            )
         return value
     if "-" not in value:
         return f"{value}-PERPETUAL"
@@ -71,9 +82,13 @@ def _parse_okx_candle(row: list[Any]) -> dict[str, Any]:
     try:
         ts = int(row[0])
         candle: dict[str, Any] = {
-            "timestamp_ms": ts, "timestamp": _iso_utc(ts),
-            "open": float(row[1]), "high": float(row[2]), "low": float(row[3]),
-            "close": float(row[4]), "volume": float(row[5]),
+            "timestamp_ms": ts,
+            "timestamp": _iso_utc(ts),
+            "open": float(row[1]),
+            "high": float(row[2]),
+            "low": float(row[3]),
+            "close": float(row[4]),
+            "volume": float(row[5]),
         }
         if len(row) > 8:
             candle["confirmed"] = str(row[8]) == "1"
@@ -85,7 +100,9 @@ def _parse_okx_candle(row: list[Any]) -> dict[str, Any]:
 
 
 def _proxy_url() -> str | None:
-    configured = os.getenv("GLOOM3O_HTTPS_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    configured = (
+        os.getenv("GLOOM3O_HTTPS_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    )
     if configured:
         return configured
     # NET.md distinguishes the host proxy from the Docker-network alias.
@@ -93,9 +110,15 @@ def _proxy_url() -> str | None:
 
 
 def fetch_price_history(
-    *, exchange: str = "okx", symbol: str = "BTC-USDT", bar: str = "1h",
-    start: str | int | None = None, end: str | int | None = None, limit: int = 100,
-    timeout_s: float = 8.0, cache_ttl_s: float = 30.0,
+    *,
+    exchange: str = "okx",
+    symbol: str = "BTC-USDT",
+    bar: str = "1h",
+    start: str | int | None = None,
+    end: str | int | None = None,
+    limit: int = 100,
+    timeout_s: float = 8.0,
+    cache_ttl_s: float = 30.0,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
     """Fetch public candles. Timestamps accept ISO-8601, Unix seconds, or Unix ms.
@@ -142,11 +165,20 @@ def fetch_price_history(
     try:
         with httpx.Client(**client_kwargs) as client:
             if selected_exchange == "okx":
-                params = {"instId": normalized_symbol, "bar": okx_bar, "limit": str(limit),
-                          "after": str(end_ms), "before": str(start_ms)}
+                params = {
+                    "instId": normalized_symbol,
+                    "bar": okx_bar,
+                    "limit": str(limit),
+                    "after": str(end_ms),
+                    "before": str(start_ms),
+                }
             else:
-                params = {"instrument_name": normalized_symbol, "resolution": deribit_resolution,
-                          "start_timestamp": start_ms, "end_timestamp": end_ms}
+                params = {
+                    "instrument_name": normalized_symbol,
+                    "resolution": deribit_resolution,
+                    "start_timestamp": start_ms,
+                    "end_timestamp": end_ms,
+                }
             response = client.get(endpoint, params=params, headers={"Accept": "application/json"})
             response.raise_for_status()
             raw_bytes = response.content
@@ -157,12 +189,18 @@ def fetch_price_history(
     except MarketHistoryError:
         raise
     except (httpx.HTTPError, OSError, ValueError) as exc:
-        raise MarketHistoryError(f"{selected_exchange} public candles request failed: {type(exc).__name__}") from exc
+        raise MarketHistoryError(
+            f"{selected_exchange} public candles request failed: {type(exc).__name__}"
+        ) from exc
 
     raw_records: list[Any]
     if selected_exchange == "okx":
         if not isinstance(payload, dict) or payload.get("code") != "0":
-            message = payload.get("msg", "unexpected provider response") if isinstance(payload, dict) else "unexpected provider response"
+            message = (
+                payload.get("msg", "unexpected provider response")
+                if isinstance(payload, dict)
+                else "unexpected provider response"
+            )
             raise MarketHistoryError(f"OKX candles rejected request: {message}")
         raw_records = payload.get("data", [])
         if not isinstance(raw_records, list):
@@ -181,29 +219,55 @@ def fetch_price_history(
             raise MarketHistoryError("Deribit response candle arrays are malformed")
         if any(len(values) != len(ticks) for values in arrays):
             raise MarketHistoryError("Deribit response candle arrays have different lengths")
-        raw_records = [{"tick": ticks[i], "open": arrays[0][i], "high": arrays[1][i],
-                        "low": arrays[2][i], "close": arrays[3][i], "volume": arrays[4][i]}
-                       for i in range(len(ticks))]
+        raw_records = [
+            {
+                "tick": ticks[i],
+                "open": arrays[0][i],
+                "high": arrays[1][i],
+                "low": arrays[2][i],
+                "close": arrays[3][i],
+                "volume": arrays[4][i],
+            }
+            for i in range(len(ticks))
+        ]
         candles = []
         try:
             for row in raw_records:
                 ts = int(row["tick"])
-                candles.append({"timestamp_ms": ts, "timestamp": _iso_utc(ts),
-                                "open": float(row["open"]), "high": float(row["high"]),
-                                "low": float(row["low"]), "close": float(row["close"]),
-                                "volume": float(row["volume"])})
+                candles.append(
+                    {
+                        "timestamp_ms": ts,
+                        "timestamp": _iso_utc(ts),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row["volume"]),
+                    }
+                )
         except (TypeError, ValueError, OverflowError) as exc:
             raise MarketHistoryError("Deribit returned a non-numeric candle row") from exc
 
-    candles = sorted((c for c in candles if start_ms <= c["timestamp_ms"] <= end_ms), key=lambda c: c["timestamp_ms"])
+    candles = sorted(
+        (c for c in candles if start_ms <= c["timestamp_ms"] <= end_ms),
+        key=lambda c: c["timestamp_ms"],
+    )
     if len(candles) > limit:
         candles = candles[-limit:]
     result = {
-        "status": "success", "exchange": selected_exchange, "symbol": normalized_symbol,
-        "bar": normalized_bar, "start": _iso_utc(start_ms), "end": _iso_utc(end_ms),
-        "start_ms": start_ms, "end_ms": end_ms,
+        "status": "success",
+        "exchange": selected_exchange,
+        "symbol": normalized_symbol,
+        "bar": normalized_bar,
+        "start": _iso_utc(start_ms),
+        "end": _iso_utc(end_ms),
+        "start_ms": start_ms,
+        "end_ms": end_ms,
         "fetched_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "cached": False, "count": len(candles), "candles": candles, "source_endpoint": endpoint,
+        "cached": False,
+        "count": len(candles),
+        "candles": candles,
+        "source_endpoint": endpoint,
         "raw_response_summary": {
             "http_status": response.status_code,
             "top_level_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
@@ -212,7 +276,8 @@ def fetch_price_history(
             "raw_record_count": len(raw_records),
             "raw_first_record": raw_records[0] if raw_records else None,
             "raw_last_record": raw_records[-1] if raw_records else None,
-            "sha256": hashlib.sha256(raw_bytes).hexdigest(), "size_bytes": len(raw_bytes),
+            "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "size_bytes": len(raw_bytes),
         },
     }
     if cache_ttl_s > 0:
