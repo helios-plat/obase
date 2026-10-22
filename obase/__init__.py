@@ -4,6 +4,14 @@ from __future__ import annotations
 
 __version__ = "0.31.0"
 
+from obase.evidence_ledger import (
+    EvidenceRecordError,
+    append_evidence_record,
+    build_evidence_record,
+    read_evidence_records,
+    validate_evidence_record,
+)
+
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
 # B1 — webhook signing submodule
@@ -63,6 +71,11 @@ from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
 
 __all__ = [
+    "EvidenceRecordError",
+    "append_evidence_record",
+    "build_evidence_record",
+    "read_evidence_records",
+    "validate_evidence_record",
     "__version__",
     "bootstrap",
     "load_env",
