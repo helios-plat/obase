@@ -6,6 +6,8 @@ obase/provider_registry.py
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 from importlib.metadata import entry_points
 from typing import Any, Protocol, runtime_checkable
@@ -60,6 +62,37 @@ class ProviderRegistry:
         if cls._instance is None:
             cls._instance = ProviderRegistry()
         return cls._instance
+
+    @classmethod
+    def get_caller(cls, provider: str = "default", model: str | None = None):
+        """Return a synchronous compatibility caller for legacy Omodul workflows.
+
+        The registry's canonical interface is ``get().llm(provider)`` and can
+        return an async callable. Older Omodul workflows expect a synchronous
+        dictionary result, so this adapter resolves an awaitable when no event
+        loop is running. ``model`` is retained for the legacy signature; model
+        routing remains the responsibility of the registered provider.
+        """
+        caller = cls.get().llm(provider or "default")
+
+        def invoke(**kwargs: Any) -> Any:
+            result = caller(**kwargs)
+            if inspect.isawaitable(result):
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    return asyncio.run(result)
+                # We cannot synchronously resolve an awaitable inside an active
+                # loop; close coroutine objects to avoid leaking an un-awaited
+                # coroutine when raising the compatibility error.
+                if inspect.iscoroutine(result):
+                    result.close()
+                raise RuntimeError(
+                    "legacy synchronous provider call cannot run inside an active event loop"
+                )
+            return result
+
+        return invoke
 
     # ------------------------------------------------------------------
     # Instance registration methods

@@ -4,6 +4,14 @@ from __future__ import annotations
 
 __version__ = "0.31.0"
 
+from obase.evidence_ledger import (
+    EvidenceRecordError,
+    append_evidence_record,
+    build_evidence_record,
+    read_evidence_records,
+    validate_evidence_record,
+)
+
 # text — fuzzy matching utilities
 # B6 — notify + audit submodules
 # B1 — webhook signing submodule
@@ -63,6 +71,11 @@ from obase.trail import Trail, load_trail, query_trail
 from obase.uuid7 import uuid7
 
 __all__ = [
+    "EvidenceRecordError",
+    "append_evidence_record",
+    "build_evidence_record",
+    "read_evidence_records",
+    "validate_evidence_record",
     "__version__",
     "bootstrap",
     "load_env",
@@ -786,3 +799,19 @@ except ImportError:  # pragma: no cover
     pass
 
 # TODO: Import daemon_bus and event_barrier implementations once finalized
+
+
+# Alice 3O compatibility exports, appended without replacing legacy public names.
+from obase.daemon_bus import DaemonBusProvider, InProcessDaemonBus
+from obase.contracts import IVFS_Sandbox, KVStoreProvider, VFSProvider
+from obase.kv_store import SQLiteKVStore
+from obase.memory_bank import MemoryBank, MemoryItem
+from obase.hitl_signal_bus import HitlSignalBus
+from obase.vfs import LocalVFS
+
+__all__ = list(dict.fromkeys([
+    *globals().get("__all__", []),
+    "DaemonBusProvider", "InProcessDaemonBus", "IVFS_Sandbox",
+    "KVStoreProvider", "VFSProvider", "SQLiteKVStore", "MemoryBank",
+    "MemoryItem", "HitlSignalBus", "LocalVFS",
+]))

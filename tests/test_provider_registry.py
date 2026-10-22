@@ -34,6 +34,27 @@ class TestProviderRegistry:
         assert ProviderRegistry.has("tts", "azure") is True
         assert ProviderRegistry.has("tts", "aws") is False
 
+
+    def test_get_caller_supports_legacy_sync_provider(self):
+        ProviderRegistry.register(
+            "llm",
+            "legacy_sync",
+            lambda **kwargs: {"echo": kwargs["messages"]},
+        )
+
+        caller = ProviderRegistry.get_caller("legacy_sync", model="ignored-by-registry")
+        messages = [{"role": "user", "content": "hello"}]
+        assert caller(messages=messages) == {"echo": messages}
+
+    def test_get_caller_resolves_async_provider_for_sync_workflow(self):
+        async def async_provider(**kwargs):
+            return {"echo": kwargs["messages"]}
+
+        ProviderRegistry.register("llm", "legacy_async", async_provider)
+        caller = ProviderRegistry.get_caller("legacy_async")
+        messages = [{"role": "user", "content": "async hello"}]
+        assert caller(messages=messages) == {"echo": messages}
+
     def test_register_duplicate_raises(self):
         ProviderRegistry.register("llm", "dup", _mock_fn)
         with pytest.raises(OBaseRegistryConflict):
@@ -99,3 +120,42 @@ class TestProviderRegistry:
         with patch("obase.provider_registry.entry_points", return_value=[mock_ep]):
             with pytest.raises(ProviderDiscoveryError, match="broken"):
                 ProviderRegistry.auto_discover()
+
+
+def test_get_caller_adapts_sync_provider():
+    def sync_provider(**kwargs):
+        return {"messages": kwargs["messages"]}
+
+    ProviderRegistry.register("llm", "legacy_sync", sync_provider)
+    caller = ProviderRegistry.get_caller(provider="legacy_sync", model="ignored-by-registry")
+    messages = [{"role": "user", "content": "test"}]
+
+    assert caller(messages=messages) == {"messages": messages}
+
+
+def test_get_caller_resolves_async_provider_outside_event_loop():
+    async def async_provider(**kwargs):
+        return {"messages": kwargs["messages"]}
+
+    ProviderRegistry.register("llm", "legacy_async", async_provider)
+    caller = ProviderRegistry.get_caller(provider="legacy_async")
+    messages = [{"role": "user", "content": "async test"}]
+
+    assert caller(messages=messages) == {"messages": messages}
+
+
+def test_get_caller_refuses_async_provider_inside_event_loop():
+    import asyncio
+    import pytest
+
+    async def async_provider(**kwargs):
+        return kwargs
+
+    ProviderRegistry.register("llm", "legacy_async_loop", async_provider)
+    caller = ProviderRegistry.get_caller(provider="legacy_async_loop")
+
+    async def invoke():
+        with pytest.raises(RuntimeError, match="active event loop"):
+            caller(messages=[])
+
+    asyncio.run(invoke())

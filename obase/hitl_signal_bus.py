@@ -174,6 +174,10 @@ class HitlSignalBus:
         self._interrupt.clear()
         self._interrupt_reason = ""
 
+    def clear_interrupt(self) -> None:
+        """Compatibility alias for clearing the interrupt state."""
+        self.reset_interrupt()
+
     @property
     def interrupted(self) -> bool:
         return self._interrupt.is_set()
