@@ -82,7 +82,14 @@ class ProviderRegistry:
                     asyncio.get_running_loop()
                 except RuntimeError:
                     return asyncio.run(result)
-                raise RuntimeError("legacy synchronous provider call cannot run inside an active event loop")
+                # We cannot synchronously resolve an awaitable inside an active
+                # loop; close coroutine objects to avoid leaking an un-awaited
+                # coroutine when raising the compatibility error.
+                if inspect.iscoroutine(result):
+                    result.close()
+                raise RuntimeError(
+                    "legacy synchronous provider call cannot run inside an active event loop"
+                )
             return result
 
         return invoke
