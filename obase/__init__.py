@@ -16,10 +16,20 @@ from typing import Any
 
 __version__ = "0.31.0"
 
-from obase.daemon_bus import IDaemon_Bus, IDaemon_Subscription
+from obase.daemon_bus import (
+    DaemonBusProvider,
+    IDaemon_Bus,
+    IDaemon_Subscription,
+    InProcessDaemonBus,
+)
 
 # --- core imports: stdlib-only or light deps (structlog, yaml, httpx, pydantic) ---
 from obase.bootstrap import bootstrap, load_env
+from obase.memory_bank import MemoryBank, MemoryItem
+from obase.hitl_signal_bus import HitlSignalBus
+from obase.contracts import IVFS_Sandbox, KVStoreProvider, VFSProvider
+from obase.kv_store import SQLiteKVStore
+from obase.vfs import LocalVFS
 from obase.cache import Cache, DistributedLock, cached
 from obase.cost_tracker import (
     CostBreakdown,
@@ -61,6 +71,16 @@ __all__ = [
     "bootstrap",
     "load_env",
     "uuid7",
+    "MemoryBank",
+    "MemoryItem",
+    "HitlSignalBus",
+    "IVFS_Sandbox",
+    "VFSProvider",
+    "KVStoreProvider",
+    "SQLiteKVStore",
+    "LocalVFS",
+    "InProcessDaemonBus",
+    "DaemonBusProvider",
     "Cache",
     "cached",
     "DistributedLock",
