@@ -84,6 +84,10 @@ class MarkdownGraphStore:
 
     @staticmethod
     def _filename(node_id: str) -> str:
+        # Preserve the human-readable legacy path for simple IDs while keeping
+        # all unusual/path-like IDs slugged and hash-disambiguated.
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", node_id):
+            return f"{node_id}.md"
         readable = re.sub(r"[^A-Za-z0-9._-]+", "_", node_id).strip("._-")[:64]
         if not readable:
             readable = "node"
@@ -155,42 +159,66 @@ class MarkdownGraphStore:
         return path
 
     def load_all(self) -> list[GraphNode]:
-        """Load nodes deterministically; ignore unrelated Markdown documents."""
-        nodes: list[GraphNode] = []
+        """Load nodes deterministically and collapse legacy duplicate filenames."""
+        nodes_by_id: dict[str, GraphNode] = {}
         for path in sorted(self.root.glob("*.md"), key=lambda item: item.name):
             with path.open("r", encoding="utf-8") as stream:
                 first_line = stream.readline().rstrip("\r\n")
             node = self._decode(first_line, path)
             if node is not None:
-                nodes.append(node)
-        nodes.sort(key=lambda node: node.node_id)
-        return nodes
+                # For a migration overlap, the canonical simple-ID name sorts
+                # after its old slug-hash filename, so the current node wins.
+                nodes_by_id[node.node_id] = node
+        return sorted(nodes_by_id.values(), key=lambda node: node.node_id)
 
     def get_node(self, node_id: str) -> GraphNode | None:
-        """Fetch one node by its stable ID."""
+        """Fetch one node by ID, including nodes written with the older hashed name."""
         if not isinstance(node_id, str) or not node_id.strip():
             raise ValueError("node_id must be a non-empty string")
-        path = self.root / self._filename(node_id)
-        if not path.is_file():
-            return None
-        with path.open("r", encoding="utf-8") as stream:
-            first_line = stream.readline().rstrip("\r\n")
-        node = self._decode(first_line, path)
-        if node is None:
-            raise ValueError(f"missing graph metadata in {path}")
-        if node.node_id != node_id:
-            raise ValueError(f"node ID mismatch in {path}")
-        return node
+        readable = re.sub(r"[^A-Za-z0-9._-]+", "_", node_id).strip("._-")[:64]
+        if not readable:
+            readable = "node"
+        suffix = hashlib.sha256(node_id.encode("utf-8")).hexdigest()[:12]
+        canonical = self.root / self._filename(node_id)
+        legacy = self.root / f"{readable}-{suffix}.md"
+        candidates = [canonical] if canonical == legacy else [canonical, legacy]
+        for path in candidates:
+            if not path.is_file():
+                continue
+            with path.open("r", encoding="utf-8") as stream:
+                first_line = stream.readline().rstrip("\r\n")
+            node = self._decode(first_line, path)
+            if node is None:
+                if path == canonical:
+                    raise ValueError(f"missing graph metadata in {path}")
+                continue
+            if node.node_id == node_id:
+                return node
+            if path == canonical:
+                raise ValueError(f"node ID mismatch in {path}")
+        return None
 
     def delete_node(self, node_id: str) -> bool:
-        """Delete a stored node by ID and return whether it existed."""
+        """Delete a stored node by ID, including any legacy duplicate filename."""
         if not isinstance(node_id, str) or not node_id.strip():
             raise ValueError("node_id must be a non-empty string")
-        node = self.get_node(node_id)
-        if node is None:
-            return False
-        (self.root / self._filename(node_id)).unlink()
-        return True
+        readable = re.sub(r"[^A-Za-z0-9._-]+", "_", node_id).strip("._-")[:64]
+        if not readable:
+            readable = "node"
+        suffix = hashlib.sha256(node_id.encode("utf-8")).hexdigest()[:12]
+        canonical = self.root / self._filename(node_id)
+        legacy = self.root / f"{readable}-{suffix}.md"
+        removed = False
+        for path in (canonical,) if canonical == legacy else (canonical, legacy):
+            if not path.is_file():
+                continue
+            with path.open("r", encoding="utf-8") as stream:
+                first_line = stream.readline().rstrip("\r\n")
+            node = self._decode(first_line, path)
+            if node is not None and node.node_id == node_id:
+                path.unlink()
+                removed = True
+        return removed
 
     # Compatibility methods retained from the Gloom graph store interface.
     @staticmethod
