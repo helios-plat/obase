@@ -15,6 +15,7 @@ import tempfile
 from typing import Any
 
 from obase.contracts import IVFS_Sandbox
+from obase.vfs_sandbox import VFSPathTraversalError
 
 
 class LocalVFS(IVFS_Sandbox):
@@ -29,10 +30,10 @@ class LocalVFS(IVFS_Sandbox):
             raise ValueError("path must be a non-empty relative path")
         candidate_part = Path(path)
         if candidate_part.is_absolute() or any(part == ".." for part in candidate_part.parts):
-            raise ValueError("path must stay within the VFS root")
+            raise VFSPathTraversalError(f"path must stay within the VFS root: {path}")
         candidate = (self.root / candidate_part).resolve()
         if not candidate.is_relative_to(self.root):
-            raise ValueError("path must stay within the VFS root")
+            raise VFSPathTraversalError(f"path must stay within the VFS root: {path}")
         return candidate
 
     async def read_file(self, path: str) -> bytes:
@@ -44,7 +45,7 @@ class LocalVFS(IVFS_Sandbox):
         target.parent.mkdir(parents=True, exist_ok=True)
         resolved_parent = target.parent.resolve()
         if not resolved_parent.is_relative_to(self.root):
-            raise ValueError("path must stay within the VFS root")
+            raise VFSPathTraversalError(f"path must stay within the VFS root: {path}")
         fd, temp_name = tempfile.mkstemp(
             prefix=".vfs-write-", suffix=".tmp", dir=resolved_parent
         )
@@ -100,7 +101,7 @@ class LocalVFS(IVFS_Sandbox):
         except subprocess.TimeoutExpired as exc:
             stdout = cls._decode_output(exc.stdout)
             stderr = cls._decode_output(exc.stderr)
-            message = f"command timed out after {timeout}s"
+            message = f"Timeout: command timed out after {timeout}s"
             return {
                 "exit_code": -1,
                 "stdout": stdout,

@@ -135,7 +135,7 @@ class MarkdownGraphStore:
             f"- Content hash: {node.content_hash}\n\n"
             "## Relations\n\n"
             + "".join(
-                f"- {relation.type} -> {relation.target}\n"
+                f"- [[{relation.target}]] ({relation.type})\n"
                 for relation in node.relations
             )
         )
@@ -192,33 +192,37 @@ class MarkdownGraphStore:
         (self.root / self._filename(node_id)).unlink()
         return True
 
-# Compatibility helpers retained from the Gloom graph store interface.
-@staticmethod
-def hash_content(content: bytes | str) -> str:
-    raw = content.encode("utf-8") if isinstance(content, str) else content
-    return hashlib.sha256(raw).hexdigest()
+    # Compatibility methods retained from the Gloom graph store interface.
+    @staticmethod
+    def hash_content(content: bytes | str) -> str:
+        raw = content.encode("utf-8") if isinstance(content, str) else content
+        return hashlib.sha256(raw).hexdigest()
 
-def node_path(self, node_id: str) -> Path:
-    if not isinstance(node_id, str) or not node_id.strip():
-        raise ValueError("node_id must be a non-empty string")
-    return self.root / self._filename(node_id)
+    def node_path(self, node_id: str) -> Path:
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string")
+        return self.root / self._filename(node_id)
 
-def get_hash(self, node_id: str) -> str | None:
-    node = self.get_node(node_id)
-    return None if node is None else node.content_hash
+    def get_hash(self, node_id: str) -> str | None:
+        node = self.get_node(node_id)
+        return None if node is None else node.content_hash
 
-def check_hash(self, node_id: str, content_hash: str) -> bool:
-    return self.get_hash(node_id) == content_hash
+    def check_hash(self, node_id: str, content_hash: str) -> bool:
+        return self.get_hash(node_id) == content_hash
 
-@staticmethod
-def _parse_markdown(node_id: str, md: str) -> GraphNode:
-    if not isinstance(node_id, str) or not node_id.strip():
-        raise ValueError("node_id must be a non-empty string")
-    lines = md.splitlines()
-    summary = next((line[2:].strip() for line in lines if line.startswith("# ")), "")
-    crux = ""
-    for i, line in enumerate(lines):
-        if line.strip().lower() in {"## crux", "## 核心", "## crux:"}:
-            crux = next((item.strip() for item in lines[i + 1:] if item.strip()), "")
-            break
-    return GraphNode(node_id=node_id, summary=summary, crux=crux)
+    def load_node(self, node_id: str) -> GraphNode | None:
+        """Read one node by its stable node ID, returning None when absent."""
+        return self.get_node(node_id)
+
+    @staticmethod
+    def _parse_markdown(node_id: str, md: str) -> GraphNode:
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string")
+        lines = md.splitlines()
+        summary = next((line[2:].strip() for line in lines if line.startswith("# ")), "")
+        crux = ""
+        for i, line in enumerate(lines):
+            if line.strip().lower() in {"## crux", "## 核心", "## crux:"}:
+                crux = next((item.strip() for item in lines[i + 1:] if item.strip()), "")
+                break
+        return GraphNode(node_id=node_id, summary=summary, crux=crux)
