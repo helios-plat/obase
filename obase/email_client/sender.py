@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import logging
 
+try:
+    import resend
+except ImportError:  # optional until email delivery is configured
+    resend = None  # type: ignore[assignment]
+
 log = logging.getLogger(__name__)
 
 
@@ -21,7 +26,8 @@ def _send(
     text_body: str,
 ) -> None:
     """Low-level send via resend. Raises EmailClientError on failure."""
-    import resend
+    if resend is None:
+        raise EmailClientError("The resend SDK is not installed")
 
     resend.api_key = api_key
     try:
