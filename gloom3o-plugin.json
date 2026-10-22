@@ -1,0 +1,12 @@
+{
+  "name": "gloom3o.obase",
+  "version": "1.0.0",
+  "description": "Gloom 3O base adapters including public market-history access",
+  "entrypoint": "obase.market_history",
+  "dependencies": [],
+  "capabilities": [
+    "public-market-data",
+    "read-only",
+    "bounded-cache"
+  ]
+}
