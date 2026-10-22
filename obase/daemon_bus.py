@@ -8,9 +8,16 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import AsyncGenerator
-from typing import Any, Protocol
+from copy import deepcopy
+from typing import Any, Protocol, runtime_checkable
 
 from obase.contracts import IDaemon_Bus
+
+
+@runtime_checkable
+class IDaemon_Subscription(Protocol):
+    async def receive(self) -> dict[str, Any]: ...
+    def close(self) -> None: ...
 
 
 class DaemonBusProvider(Protocol):
@@ -19,6 +26,9 @@ class DaemonBusProvider(Protocol):
     async def publish(self, topic: str, payload: dict[str, Any]) -> None: ...
 
     async def subscribe(self, topic: str) -> AsyncGenerator[dict[str, Any], None]: ...
+
+
+_CLOSED = object()
 
 
 class _Subscription:
@@ -30,12 +40,18 @@ class _Subscription:
         self._queue = queue
 
     async def receive(self) -> dict:
-        """阻塞读取下一条消息"""
-        return await self._queue.get()
+        """Read the next payload; a closed handle terminates iteration."""
+        payload = await self._queue.get()
+        if payload is _CLOSED:
+            raise StopAsyncIteration("subscription is closed")
+        if not isinstance(payload, dict):
+            raise RuntimeError("daemon bus delivered an invalid payload")
+        return payload
 
     def close(self) -> None:
-        """退订"""
+        """Unsubscribe this handle and unblock pending receivers."""
         self._bus._unsubscribe(self._topic, self._queue)
+        self._queue.put_nowait(_CLOSED)
 
 
 class InProcessDaemonBus(IDaemon_Bus):
@@ -45,10 +61,16 @@ class InProcessDaemonBus(IDaemon_Bus):
         self._subscribers: dict[str, set[asyncio.Queue]] = defaultdict(set)
 
     async def publish(self, topic: str, payload: dict) -> None:
+        if not isinstance(topic, str) or not topic.strip():
+            raise ValueError("topic must be a non-empty string")
+        if not isinstance(payload, dict):
+            raise TypeError("payload must be a dictionary")
         for queue in list(self._subscribers.get(topic, ())):
-            await queue.put(payload)
+            await queue.put(deepcopy(payload))
 
     async def subscribe(self, topic: str) -> Any:
+        if not isinstance(topic, str) or not topic.strip():
+            raise ValueError("topic must be a non-empty string")
         queue: asyncio.Queue = asyncio.Queue()
         self._subscribers[topic].add(queue)
         return _Subscription(self, topic, queue)
@@ -59,3 +81,8 @@ class InProcessDaemonBus(IDaemon_Bus):
             subscribers.discard(queue)
             if not subscribers:
                 self._subscribers.pop(topic, None)
+
+
+# Keep the contracts-layer ABC as the canonical public interface.
+IDaemon_Bus = __import__('obase.contracts', fromlist=['IDaemon_Bus']).IDaemon_Bus
+DaemonBusProvider = IDaemon_Bus

@@ -1,35 +1,62 @@
-"""3O 范式内化 — Graft 图谱存储 (obase 基础设施).
-
-本地 Markdown 图谱节点 + SHA256 哈希缓存 (.veya/graph/ 目录)。
-无业务逻辑, 无 LLM。
-"""
+"""Markdown-backed graph nodes with machine-readable, versioned metadata."""
 
 from __future__ import annotations
 
+import base64
+import binascii
+from dataclasses import dataclass, field
 import hashlib
 import json
-from dataclasses import dataclass, field
+import os
 from pathlib import Path
+import re
+import tempfile
 from typing import Any
 
 
-@dataclass
+_MARKER = "<!-- obase-graph-node:v1:"
+_MARKER_END = " -->"
+
+
+@dataclass(slots=True, frozen=True)
 class GraphRelation:
+    """Directed relation from its owning node to its target."""
+
     target: str
     type: str = "depends_on"
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.target, str) or not self.target.strip():
+            raise ValueError("relation target must be a non-empty string")
+        if not isinstance(self.type, str) or not self.type.strip():
+            raise ValueError("relation type must be a non-empty string")
 
-@dataclass
+    def to_dict(self) -> dict[str, str]:
+        return {"target": self.target, "type": self.type}
+
+
+@dataclass(slots=True)
 class GraphNode:
-    """Graft 图谱节点 (与规范数据契约一致)。"""
+    """A repository/code-graph node and the provenance attached to it."""
 
     node_id: str
-    file_path: str
-    content_hash: str
+    file_path: str = ""
+    content_hash: str = ""
     summary: str = ""
     crux: str = ""
     relations: list[GraphRelation] = field(default_factory=list)
     custom_notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.node_id, str) or not self.node_id.strip():
+            raise ValueError("node_id must be a non-empty string")
+        for name in ("file_path", "content_hash", "summary", "crux"):
+            if not isinstance(getattr(self, name), str):
+                raise ValueError(f"{name} must be a string")
+        self.relations = [
+            relation if isinstance(relation, GraphRelation) else GraphRelation(**relation)
+            for relation in self.relations
+        ]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,130 +65,160 @@ class GraphNode:
             "content_hash": self.content_hash,
             "summary": self.summary,
             "crux": self.crux,
-            "relations": [{"target": r.target, "type": r.type} for r in self.relations],
+            "relations": [relation.to_dict() for relation in self.relations],
             "custom_notes": self.custom_notes,
         }
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GraphNode:
-        return cls(
-            node_id=data["node_id"],
-            file_path=data.get("file_path", ""),
-            content_hash=data.get("content_hash", ""),
-            summary=data.get("summary", ""),
-            crux=data.get("crux", ""),
-            relations=[
-                GraphRelation(target=r["target"], type=r.get("type", "depends_on"))
-                for r in data.get("relations", [])
-            ],
-            custom_notes=data.get("custom_notes", ""),
-        )
-
 
 class MarkdownGraphStore:
-    """本地 Markdown 图谱存储: 节点为 .md 文件, 关系为 [[wikilink]]。"""
+    """Persist graph nodes as readable Markdown pages with an encoded JSON header.
 
-    def __init__(self, graph_dir: str | Path):
-        self.graph_dir = Path(graph_dir)
-        self.cache_path = self.graph_dir / "cache.json"
+    The metadata header is versioned and stored in the first line as a base64
+    payload so arbitrary Markdown text and comment terminators in content
+    cannot corrupt parsing. Writes use an atomic rename.
+    """
 
-    # -- 哈希 ------------------------------------------------------------
+    def __init__(self, root: str | Path):
+        self.root = Path(root).expanduser()
+        self.root.mkdir(parents=True, exist_ok=True)
+
     @staticmethod
-    def hash_content(content: bytes | str) -> str:
-        raw = content.encode("utf-8") if isinstance(content, str) else content
-        return f"sha256:{hashlib.sha256(raw).hexdigest()}"
+    def _filename(node_id: str) -> str:
+        readable = re.sub(r"[^A-Za-z0-9._-]+", "_", node_id).strip("._-")[:64]
+        if not readable:
+            readable = "node"
+        suffix = hashlib.sha256(node_id.encode("utf-8")).hexdigest()[:12]
+        return f"{readable}-{suffix}.md"
 
-    def _load_cache(self) -> dict[str, str]:
-        if not self.cache_path.exists():
-            return {}
+    @staticmethod
+    def _encode(node: GraphNode) -> str:
+        raw = json.dumps(
+            node.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def _decode(first_line: str, path: Path) -> GraphNode | None:
+        if not first_line.startswith(_MARKER) or not first_line.endswith(_MARKER_END):
+            return None
+        encoded = first_line[len(_MARKER) : -len(_MARKER_END)]
         try:
-            return json.loads(self.cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-    def _save_cache(self, cache: dict[str, str]) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(
-            json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
-        )
-
-    def check_hash(self, node_id: str, content_hash: str) -> bool:
-        """Hash 未变化返回 True (0 成本跳过依据)。"""
-        return self._load_cache().get(node_id) == content_hash
-
-    def get_hash(self, node_id: str) -> str | None:
-        return self._load_cache().get(node_id)
-
-    # -- 节点读写 --------------------------------------------------------
-    def node_path(self, node_id: str) -> Path:
-        return self.graph_dir / f"{node_id}.md"
+            payload = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+            value = json.loads(payload.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("metadata must be a JSON object")
+            relations = value.get("relations", [])
+            if not isinstance(relations, list):
+                raise ValueError("relations must be a JSON list")
+            return GraphNode(
+                node_id=value["node_id"],
+                file_path=value.get("file_path", ""),
+                content_hash=value.get("content_hash", ""),
+                summary=value.get("summary", ""),
+                crux=value.get("crux", ""),
+                relations=[GraphRelation(**relation) for relation in relations],
+                custom_notes=value.get("custom_notes", ""),
+            )
+        except (binascii.Error, KeyError, TypeError, UnicodeError, ValueError) as exc:
+            raise ValueError(f"invalid graph metadata in {path}") from exc
 
     def save_node(self, node: GraphNode) -> Path:
-        """节点落盘为 Markdown (含 [[wikilink]] 关联) + 更新哈希缓存。"""
-        self.graph_dir.mkdir(parents=True, exist_ok=True)
-        links = "\n".join(
-            f"- [[{r.target}]] ({r.type})" for r in node.relations
+        """Validate and atomically persist one node; existing IDs are upserted."""
+        if not isinstance(node, GraphNode):
+            raise TypeError("node must be a GraphNode")
+        path = self.root / self._filename(node.node_id)
+        header = f"{_MARKER}{self._encode(node)}{_MARKER_END}"
+        body = (
+            f"{header}\n\n# {node.node_id}\n\n"
+            f"{node.summary}\n\n## Crux\n\n{node.crux}\n\n"
+            f"- File: {node.file_path}\n"
+            f"- Content hash: {node.content_hash}\n\n"
+            "## Relations\n\n"
+            + "".join(
+                f"- {relation.type} -> {relation.target}\n"
+                for relation in node.relations
+            )
         )
-        md = (
-            f"# {node.node_id}\n\n"
-            f"- file: `{node.file_path}`\n"
-            f"- hash: `{node.content_hash}`\n\n"
-            f"## Summary\n\n{node.summary}\n\n"
-            f"## Crux\n\n```\n{node.crux}\n```\n\n"
-            f"## Relations\n\n{links or '_none_'}\n\n"
-            f"## Notes\n\n{node.custom_notes or '_none_'}\n"
-        )
-        path = self.node_path(node.node_id)
-        path.write_text(md, encoding="utf-8")
-        cache = self._load_cache()
-        cache[node.node_id] = node.content_hash
-        self._save_cache(cache)
+        fd, temp_name = tempfile.mkstemp(prefix=".graph-node-", suffix=".tmp", dir=self.root)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+                stream.write(body)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_name, path)
+        except BaseException:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            raise
         return path
 
-    def load_node(self, node_id: str) -> GraphNode | None:
-        path = self.node_path(node_id)
-        if not path.exists():
-            return None
-        md = path.read_text(encoding="utf-8")
-        return self._parse_markdown(node_id, md)
-
     def load_all(self) -> list[GraphNode]:
-        if not self.graph_dir.exists():
-            return []
-        nodes = []
-        for md_path in sorted(self.graph_dir.glob("*.md")):
-            nodes.append(self._parse_markdown(md_path.stem, md_path.read_text(encoding="utf-8")))
+        """Load nodes deterministically; ignore unrelated Markdown documents."""
+        nodes: list[GraphNode] = []
+        for path in sorted(self.root.glob("*.md"), key=lambda item: item.name):
+            with path.open("r", encoding="utf-8") as stream:
+                first_line = stream.readline().rstrip("\r\n")
+            node = self._decode(first_line, path)
+            if node is not None:
+                nodes.append(node)
+        nodes.sort(key=lambda node: node.node_id)
         return nodes
 
-    @staticmethod
-    def _parse_markdown(node_id: str, md: str) -> GraphNode:
-        file_path = ""
-        summary = ""
-        crux = ""
-        relations: list[GraphRelation] = []
-        section = ""
-        for line in md.splitlines():
-            if line.startswith("## "):
-                section = line[3:].strip().lower()
-                continue
-            if line.startswith("- file: `"):
-                file_path = line[len("- file: `"):].rstrip("`")
-            elif section == "summary":
-                summary = line if line.strip() else summary
-            elif section == "crux" and not crux:
-                if line.strip() and not line.strip().startswith("```"):
-                    crux = line.strip()
-            elif section == "relations" and line.startswith("- [["):
-                target = line[4:].split("]]")[0]
-                rel_type = "depends_on"
-                if "(" in line:
-                    rel_type = line.split("(", 1)[1].rstrip(")")
-                relations.append(GraphRelation(target=target, type=rel_type))
-        return GraphNode(
-            node_id=node_id,
-            file_path=file_path,
-            content_hash="",
-            summary=summary,
-            crux=crux,
-            relations=relations,
-        )
+    def get_node(self, node_id: str) -> GraphNode | None:
+        """Fetch one node by its stable ID."""
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string")
+        path = self.root / self._filename(node_id)
+        if not path.is_file():
+            return None
+        with path.open("r", encoding="utf-8") as stream:
+            first_line = stream.readline().rstrip("\r\n")
+        node = self._decode(first_line, path)
+        if node is None:
+            raise ValueError(f"missing graph metadata in {path}")
+        if node.node_id != node_id:
+            raise ValueError(f"node ID mismatch in {path}")
+        return node
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a stored node by ID and return whether it existed."""
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("node_id must be a non-empty string")
+        node = self.get_node(node_id)
+        if node is None:
+            return False
+        (self.root / self._filename(node_id)).unlink()
+        return True
+
+# Compatibility helpers retained from the Gloom graph store interface.
+@staticmethod
+def hash_content(content: bytes | str) -> str:
+    raw = content.encode("utf-8") if isinstance(content, str) else content
+    return hashlib.sha256(raw).hexdigest()
+
+def node_path(self, node_id: str) -> Path:
+    if not isinstance(node_id, str) or not node_id.strip():
+        raise ValueError("node_id must be a non-empty string")
+    return self.root / self._filename(node_id)
+
+def get_hash(self, node_id: str) -> str | None:
+    node = self.get_node(node_id)
+    return None if node is None else node.content_hash
+
+def check_hash(self, node_id: str, content_hash: str) -> bool:
+    return self.get_hash(node_id) == content_hash
+
+@staticmethod
+def _parse_markdown(node_id: str, md: str) -> GraphNode:
+    if not isinstance(node_id, str) or not node_id.strip():
+        raise ValueError("node_id must be a non-empty string")
+    lines = md.splitlines()
+    summary = next((line[2:].strip() for line in lines if line.startswith("# ")), "")
+    crux = ""
+    for i, line in enumerate(lines):
+        if line.strip().lower() in {"## crux", "## 核心", "## crux:"}:
+            crux = next((item.strip() for item in lines[i + 1:] if item.strip()), "")
+            break
+    return GraphNode(node_id=node_id, summary=summary, crux=crux)

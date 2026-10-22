@@ -786,3 +786,19 @@ except ImportError:  # pragma: no cover
     pass
 
 # TODO: Import daemon_bus and event_barrier implementations once finalized
+
+
+# Alice 3O compatibility exports, appended without replacing legacy public names.
+from obase.daemon_bus import DaemonBusProvider, InProcessDaemonBus
+from obase.contracts import IVFS_Sandbox, KVStoreProvider, VFSProvider
+from obase.kv_store import SQLiteKVStore
+from obase.memory_bank import MemoryBank, MemoryItem
+from obase.hitl_signal_bus import HitlSignalBus
+from obase.vfs import LocalVFS
+
+__all__ = list(dict.fromkeys([
+    *globals().get("__all__", []),
+    "DaemonBusProvider", "InProcessDaemonBus", "IVFS_Sandbox",
+    "KVStoreProvider", "VFSProvider", "SQLiteKVStore", "MemoryBank",
+    "MemoryItem", "HitlSignalBus", "LocalVFS",
+]))
